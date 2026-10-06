@@ -31,11 +31,14 @@
   type ProductState = { product: string; amount: string; touched: boolean }
 
   const presetTree = untrack(() => ui.logCareTree)
+  const presetTrees = untrack(() => ui.logCareTrees)
   const activeTrees = untrack(() => db.trees.filter(isActive))
 
   let careType = $state(untrack(() => ui.logCareType) || '')
   let date = $state(todayISO())
-  let selected = $state<Set<string>>(new Set(presetTree ? [presetTree] : activeTrees.map((t) => t.id)))
+  let selected = $state<Set<string>>(
+    new Set(presetTree ? [presetTree] : presetTrees.length ? presetTrees : activeTrees.map((t) => t.id)),
+  )
   let showTrees = $state(!presetTree)
   let notes = $state('')
   let error = $state('')

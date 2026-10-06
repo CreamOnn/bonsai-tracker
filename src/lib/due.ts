@@ -111,6 +111,21 @@ export function dueByType(today = todayISO()) {
   return groups
 }
 
+/** The soonest future due date across active trees, for the "nothing due" line on Home. */
+export function nextUpcoming(today = todayISO()): { careType: string; date: string; count: number } | null {
+  let best: { careType: string; date: string; count: number } | null = null
+  for (const ct of schedulableTypes()) {
+    for (const t of db.trees) {
+      if (!isActive(t)) continue
+      const d = dueFor(t, ct, today)
+      if (!d.interval || !d.next || d.next <= today) continue
+      if (!best || d.next < best.date) best = { careType: ct, date: d.next, count: 1 }
+      else if (d.next === best.date && ct === best.careType) best.count++
+    }
+  }
+  return best
+}
+
 /** "every 14 days", "every 2 weeks", "every 3 months", "every 2 years" */
 export function fmtInterval(days: number) {
   const [n, unit] = days % 365 === 0 ? [days / 365, 'year'] : days % 30 === 0 ? [days / 30, 'month'] : days % 7 === 0 ? [days / 7, 'week'] : [days, 'day']

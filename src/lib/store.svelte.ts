@@ -30,11 +30,20 @@ export const db = $state({
   meta: [] as Row[],
 })
 
-// logCareTree preselects one tree (single entry); empty means a round with all active trees ticked.
-export const ui = $state({ addTree: false, addPot: false, logCare: false, logCareType: '', logCareTree: '' })
+// Log care presets: logCareTree = one tree (single entry); logCareTrees = a round with just these ticked;
+// neither = a round with all active trees ticked.
+export const ui = $state({
+  addTree: false,
+  addPot: false,
+  logCare: false,
+  logCareType: '',
+  logCareTree: '',
+  logCareTrees: [] as string[],
+})
 
-export function openLogCare(opts: { treeId?: string; careType?: string } = {}) {
+export function openLogCare(opts: { treeId?: string; treeIds?: string[]; careType?: string } = {}) {
   ui.logCareTree = opts.treeId ?? ''
+  ui.logCareTrees = opts.treeIds ?? []
   ui.logCareType = opts.careType ?? ''
   ui.logCare = true
 }
