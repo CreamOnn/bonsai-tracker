@@ -91,6 +91,19 @@ export async function uploadJpeg(blob: Blob, name: string, folderId: string): Pr
   return id
 }
 
+/** Moves a file to the Drive bin (recoverable for 30 days), not a permanent delete. */
+export async function trashFile(id: string) {
+  await gjson(`https://www.googleapis.com/drive/v3/files/${id}?fields=id`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  })
+  urls.delete(id)
+  try {
+    await (await caches.open(CACHE)).delete(cacheKey(id))
+  } catch {}
+}
+
 // Display: in-memory object URLs backed by the Cache API, so photos load once per device.
 const CACHE = 'bt-photos-v1'
 const cacheKey = (id: string) => `https://bonsai-tracker.cache/${id}`

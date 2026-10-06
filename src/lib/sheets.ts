@@ -15,6 +15,7 @@ const NUMERIC = new Set(['origin_year', 'price_paid', 'price', 'sale_price', 'le
 
 let sheetId = ''
 const headers: Record<string, string[]> = {}
+const tabIds: Record<string, number> = {}
 
 function colLetter(index: number) {
   let n = index + 1
@@ -33,14 +34,16 @@ export async function loadAll(id: string): Promise<Record<string, Row[]>> {
   sheetId = id
 
   // Add any tabs a newer schema introduced.
-  const meta = await gjson<{ sheets: { properties: { title: string } }[] }>(`${API}/${id}?fields=sheets(properties(title))`)
-  const existing = new Set(meta.sheets.map((s) => s.properties.title))
-  const missing = Object.keys(TABS).filter((t) => !existing.has(t))
+  type Props = { properties: { title: string; sheetId: number } }
+  const meta = await gjson<{ sheets: Props[] }>(`${API}/${id}?fields=sheets(properties(title,sheetId))`)
+  for (const s of meta.sheets) tabIds[s.properties.title] = s.properties.sheetId
+  const missing = Object.keys(TABS).filter((t) => !(t in tabIds))
   if (missing.length) {
-    await gjson(
+    const res = await gjson<{ replies: { addSheet: Props }[] }>(
       `${API}/${id}:batchUpdate`,
       jsonBody({ requests: missing.map((title) => ({ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } })) }),
     )
+    for (const r of res.replies) tabIds[r.addSheet.properties.title] = r.addSheet.properties.sheetId
   }
 
   const params = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' })
@@ -92,6 +95,16 @@ export async function appendRow(tab: string, obj: Record<string, unknown>): Prom
   const row = Number(res.updates.updatedRange.match(/![A-Z]+(\d+)/)?.[1])
   if (!row) throw new Error('Saved, but could not read back the row position. Please reload.')
   return row
+}
+
+/** Removes a row; rows below it move up by one, so callers must renumber their copies. */
+export async function deleteRow(tab: string, row: number) {
+  await gjson(
+    `${API}/${sheetId}:batchUpdate`,
+    jsonBody({
+      requests: [{ deleteDimension: { range: { sheetId: tabIds[tab], dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }],
+    }),
+  )
 }
 
 export async function updateRow(tab: string, row: number, obj: Record<string, unknown>) {

@@ -9,6 +9,8 @@
   import { coverFor, getTree, isActive, photosFor, restoreTree, setTreeCover } from '../lib/store.svelte'
   import ArchiveForm from './ArchiveForm.svelte'
   import PhotoForm from './PhotoForm.svelte'
+  import PhotoEditForm from './PhotoEditForm.svelte'
+  import type { Row } from '../lib/store.svelte'
   import TreeForm from './TreeForm.svelte'
 
   let { id }: { id: string } = $props()
@@ -21,6 +23,14 @@
   let archiving = $state(false)
   let pickedFile = $state<File | null>(null)
   let photoOpen = $state(false)
+  let editingPhoto = $state<Row | null>(null)
+  let photoEditOpen = $state(false)
+
+  function openPhoto(p: Row) {
+    ensureFreshToken()
+    editingPhoto = p
+    photoEditOpen = true
+  }
   let busy = $state(false)
   let restoring = $state(false)
   let actionError = $state('')
@@ -131,7 +141,9 @@
                 <button class="setcover" onclick={() => makeCover(p.id)}>Set as cover</button>
               {/if}
             </div>
-            <div class="shot"><DriveImage fileId={p.thumb_file_id || p.drive_file_id} alt={p.caption} /></div>
+            <button class="shot" onclick={() => openPhoto(p)} aria-label="Edit or delete photo">
+              <DriveImage fileId={p.thumb_file_id || p.drive_file_id} alt={p.caption} />
+            </button>
             {#if p.caption}<p class="caption">{p.caption}</p>{/if}
           </li>
         {/each}
@@ -145,6 +157,14 @@
 
   <BottomSheet bind:open={archiving} title="Archive tree" {busy}>
     <ArchiveForm treeId={tree.id} bind:busy ondone={() => (archiving = false)} />
+  </BottomSheet>
+
+  <BottomSheet bind:open={photoEditOpen} title="Photo" {busy}>
+    {#if editingPhoto}
+      {#key editingPhoto.id}
+        <PhotoEditForm photo={editingPhoto} bind:busy ondone={() => (photoEditOpen = false)} />
+      {/key}
+    {/if}
   </BottomSheet>
 
   <BottomSheet bind:open={photoOpen} title="Add photo" {busy}>
@@ -311,9 +331,15 @@
     color: var(--muted);
   }
   .shot {
+    display: block;
+    width: 100%;
     aspect-ratio: 4 / 3;
     border-radius: 12px;
     overflow: hidden;
+    transition: transform 0.15s ease;
+  }
+  .shot:active {
+    transform: scale(0.99);
   }
   .caption {
     margin: 10px 0 0;

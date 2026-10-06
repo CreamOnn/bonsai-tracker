@@ -1,8 +1,8 @@
 // In-memory copy of the Sheet. Every mutation writes to the Sheet first, then updates state.
 import type { Workspace } from './drive'
 import { newId, todayISO } from './format'
-import { resizeImage, uploadJpeg } from './photos'
-import { appendRow, asRow, loadAll, updateRow, type Row } from './sheets'
+import { resizeImage, trashFile, uploadJpeg } from './photos'
+import { appendRow, asRow, deleteRow, loadAll, updateRow, type Row } from './sheets'
 
 export type { Row }
 export type ArchiveStatus = 'sold' | 'died' | 'gifted'
@@ -117,6 +117,29 @@ export async function addPhoto(opts: {
   db.photos.push(asRow(row, _row))
 
   if (opts.makeCover && opts.ownerType === 'tree') await saveTree({ cover_photo_id: row.id }, opts.ownerId)
+}
+
+export async function updatePhoto(id: string, fields: { date: string; caption: string }) {
+  const photo = getPhoto(id)
+  if (!photo) return
+  const next = { date: fields.date, caption: fields.caption.trim() }
+  await updateRow('Photos', photo._row, { ...photo, ...next })
+  Object.assign(photo, next)
+}
+
+/** Removes the Sheet row, then bins both Drive files. Clears the cover if it pointed here. */
+export async function deletePhoto(id: string) {
+  const photo = getPhoto(id)
+  if (!photo) return
+  await deleteRow('Photos', photo._row)
+  db.photos = db.photos.filter((p) => p.id !== id)
+  for (const p of db.photos) if (p._row > photo._row) p._row -= 1
+
+  const owner = photo.owner_type === 'tree' ? getTree(photo.owner_id) : undefined
+  if (owner?.cover_photo_id === id) await saveTree({ cover_photo_id: '' }, owner.id)
+
+  // Files go to the Drive bin; a failure here leaves only an orphaned file, never a broken row.
+  await Promise.allSettled([photo.drive_file_id, photo.thumb_file_id].filter(Boolean).map(trashFile))
 }
 
 export function setTreeCover(treeId: string, photoId: string) {

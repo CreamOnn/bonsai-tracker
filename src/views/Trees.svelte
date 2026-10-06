@@ -6,17 +6,17 @@
   import { go } from '../lib/router.svelte'
   import { coverFor, db, isActive, ui, type Row } from '../lib/store.svelte'
 
-  type Sort = 'newest' | 'oldest' | 'age' | 'price'
+  type Sort = 'age' | 'newest' | 'oldest' | 'price'
   const SORTS: { value: Sort; label: string }[] = [
-    { value: 'newest', label: 'Newest' },
+    { value: 'age', label: 'Oldest tree' },
+    { value: 'newest', label: 'Newest added' },
     { value: 'oldest', label: 'Oldest added' },
-    { value: 'age', label: 'Tree age' },
     { value: 'price', label: 'Price' },
   ]
 
   let query = $state('')
   let chip = $state('') // 'species:<v>' or 'style:<v>'
-  let sort = $state<Sort>('newest')
+  let sort = $state<Sort>('age')
 
   // Chips only for species and styles actually in the collection.
   let chips = $derived.by(() => {
@@ -31,7 +31,8 @@
   const compare: Record<Sort, (a: Row, b: Row) => number> = {
     newest: (a, b) => b.created_at.localeCompare(a.created_at),
     oldest: (a, b) => a.created_at.localeCompare(b.created_at),
-    age: (a, b) => (Number(a.origin_year) || 9999) - (Number(b.origin_year) || 9999),
+    // Oldest first; trees without an estimated year go after, newest-added first.
+    age: (a, b) => (Number(a.origin_year) || 9999) - (Number(b.origin_year) || 9999) || b.created_at.localeCompare(a.created_at),
     price: (a, b) => (Number(b.price_paid) || 0) - (Number(a.price_paid) || 0),
   }
 
