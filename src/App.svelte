@@ -2,13 +2,20 @@
   import { onMount } from 'svelte'
   import { AuthRedirect, consumeRedirect, getToken, hasSignedInBefore, rememberEmail, signIn, signOut } from './lib/auth'
   import { ensureWorkspace, type Workspace } from './lib/drive'
-  import { router } from './lib/router.svelte'
+  import { go, router } from './lib/router.svelte'
+  import { loadDb, ui } from './lib/store.svelte'
   import SignIn from './views/SignIn.svelte'
   import Home from './views/Home.svelte'
   import Placeholder from './views/Placeholder.svelte'
   import Settings from './views/Settings.svelte'
+  import Trees from './views/Trees.svelte'
+  import TreeDetail from './views/TreeDetail.svelte'
+  import TreeForm from './views/TreeForm.svelte'
   import TabBar from './lib/TabBar.svelte'
   import Fab from './lib/Fab.svelte'
+  import BottomSheet from './lib/BottomSheet.svelte'
+
+  let addBusy = $state(false)
 
   type Phase = 'booting' | 'signed_out' | 'connecting' | 'ready' | 'error'
   let phase = $state<Phase>('booting')
@@ -18,8 +25,10 @@
   async function connect() {
     phase = 'connecting'
     try {
-      workspace = await ensureWorkspace()
-      rememberEmail(workspace.email)
+      const ws = await ensureWorkspace()
+      rememberEmail(ws.email)
+      await loadDb(ws)
+      workspace = ws
       phase = 'ready'
     } catch (e) {
       if (e instanceof AuthRedirect) return
@@ -81,8 +90,10 @@
   <div class="shell">
     {#if router.route === 'home'}
       <Home {workspace} />
+    {:else if router.route === 'trees' && router.param}
+      {#key router.param}<TreeDetail id={router.param} />{/key}
     {:else if router.route === 'trees'}
-      <Placeholder title="Trees" note="Your trees will live here." icon="tree" />
+      <Trees />
     {:else if router.route === 'pots'}
       <Placeholder title="Pots" note="Your pots will live here." icon="pot" />
     {:else}
@@ -91,6 +102,15 @@
   </div>
   <Fab />
   <TabBar />
+  <BottomSheet bind:open={ui.addTree} title="New tree" busy={addBusy}>
+    <TreeForm
+      bind:busy={addBusy}
+      onsaved={(t) => {
+        ui.addTree = false
+        go('trees', t.id)
+      }}
+    />
+  </BottomSheet>
 {/if}
 
 <style>

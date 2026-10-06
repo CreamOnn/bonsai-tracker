@@ -64,6 +64,18 @@ export function getToken(): string | null {
   }
 }
 
+/**
+ * Call before starting a form or upload. If the token would expire soon, refresh
+ * it now (a quick redirect) rather than mid-save, which would lose the input.
+ */
+export function ensureFreshToken(minMs = 10 * 60 * 1000) {
+  try {
+    const t = JSON.parse(localStorage.getItem(TOKEN_KEY) ?? 'null') as Token | null
+    if (t && t.expires_at - Date.now() > minMs) return
+  } catch {}
+  signIn({ silent: true })
+}
+
 export function hasSignedInBefore() {
   return localStorage.getItem(EMAIL_KEY) !== null
 }

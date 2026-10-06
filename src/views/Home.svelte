@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { Workspace } from '../lib/drive'
+  import { db, isActive } from '../lib/store.svelte'
   let { workspace }: { workspace: Workspace } = $props()
+
+  let treeCount = $derived(db.trees.filter(isActive).length)
+  let potCount = $derived(db.pots.filter(isActive).length)
 
   const today = new Intl.DateTimeFormat('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())
 </script>
@@ -12,11 +16,11 @@
 
 <section class="stats">
   <div class="stat">
-    <span class="n">0</span>
+    <span class="n">{treeCount}</span>
     <span class="label">Trees</span>
   </div>
   <div class="stat">
-    <span class="n">0</span>
+    <span class="n">{potCount}</span>
     <span class="label">Pots</span>
   </div>
 </section>

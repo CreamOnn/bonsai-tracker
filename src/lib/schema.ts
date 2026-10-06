@@ -5,7 +5,7 @@ export const TABS: Record<string, string[]> = {
   Trees: ['id', 'species', 'style', 'origin_year', 'price_paid', 'source', 'notes', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at'],
   Pots: ['id', 'maker_id', 'style', 'length_cm', 'width_cm', 'height_cm', 'origin_year', 'price', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at'],
   Makers: ['id', 'name', 'country'],
-  Photos: ['id', 'owner_type', 'owner_id', 'drive_file_id', 'date', 'caption', 'created_at'],
+  Photos: ['id', 'owner_type', 'owner_id', 'drive_file_id', 'date', 'caption', 'created_at', 'thumb_file_id'],
   CareLog: ['id', 'date', 'care_type', 'tree_id', 'notes', 'round_id', 'created_at'],
   CareTypes: ['name', 'built_in', 'schedulable', 'active_months'],
   Schedules: ['species', 'tree_id', 'care_type', 'interval_days', 'active_months'],

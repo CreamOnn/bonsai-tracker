@@ -1,12 +1,26 @@
 <script lang="ts">
+  import { ensureFreshToken } from './auth'
   import Icon from './Icon.svelte'
+  import { ui } from './store.svelte'
 
   let open = $state(false)
-  const items: { label: string; icon: 'tree' | 'pot' | 'care' }[] = [
+  const items: { label: string; icon: 'tree' | 'pot' | 'care'; action?: () => void }[] = [
     { label: 'Log round', icon: 'care' },
     { label: 'Add pot', icon: 'pot' },
-    { label: 'Add tree', icon: 'tree' },
+    {
+      label: 'Add tree',
+      icon: 'tree',
+      action: () => {
+        ensureFreshToken()
+        ui.addTree = true
+      },
+    },
   ]
+
+  function run(action?: () => void) {
+    open = false
+    action?.()
+  }
 </script>
 
 {#if open}
@@ -18,7 +32,7 @@
     <ul>
       {#each items as item, i (item.label)}
         <li style="--i: {items.length - 1 - i}">
-          <button disabled title="Coming in a later build">
+          <button disabled={!item.action} title={item.action ? undefined : 'Coming in a later build'} onclick={() => run(item.action)}>
             <span>{item.label}</span>
             <span class="ico"><Icon name={item.icon} size={20} /></span>
           </button>
@@ -86,7 +100,7 @@
   }
   li button:disabled {
     cursor: default;
-    opacity: 0.55;
+    opacity: 0.4;
   }
   .ico {
     width: 46px;
