@@ -42,7 +42,12 @@
 </script>
 
 <div class="field">
-  <span class="label">{label}{required ? '' : ' · optional'}</span>
+  <div class="head">
+    <span class="label">{label}{required ? '' : ' · optional'}</span>
+    {#if !adding}
+      <button class="addnew" onclick={() => ((adding = true), (draft = ''))} aria-label={`Add a new ${label.toLowerCase()}`}>＋ New</button>
+    {/if}
+  </div>
   {#if adding}
     <div class="new">
       <!-- svelte-ignore a11y_autofocus -->
@@ -61,6 +66,17 @@
 </div>
 
 <style>
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .addnew {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    padding: 2px 0 2px 12px;
+  }
   .new {
     display: flex;
     gap: 8px;
