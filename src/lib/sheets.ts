@@ -97,6 +97,18 @@ export async function appendRow(tab: string, obj: Record<string, unknown>): Prom
   return row
 }
 
+/** Appends several rows in one request and returns their row numbers. */
+export async function appendRows(tab: string, objs: Record<string, unknown>[]): Promise<number[]> {
+  if (!objs.length) return []
+  const res = await gjson<{ updates: { updatedRange: string } }>(
+    `${API}/${sheetId}/values/${range(`'${tab}'!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    jsonBody({ values: objs.map((o) => toCells(tab, o)) }),
+  )
+  const first = Number(res.updates.updatedRange.match(/![A-Z]+(\d+)/)?.[1])
+  if (!first) throw new Error('Saved, but could not read back the row positions. Please reload.')
+  return objs.map((_, i) => first + i)
+}
+
 /** Removes a row; rows below it move up by one, so callers must renumber their copies. */
 export async function deleteRow(tab: string, row: number) {
   await gjson(

@@ -6,7 +6,14 @@
   let open = $state(false)
   const items: { label: string; icon: 'tree' | 'pot' | 'care'; action?: () => void }[] = [
     { label: 'Log round', icon: 'care' },
-    { label: 'Add pot', icon: 'pot' },
+    {
+      label: 'Add pot',
+      icon: 'pot',
+      action: () => {
+        ensureFreshToken()
+        ui.addPot = true
+      },
+    },
     {
       label: 'Add tree',
       icon: 'tree',

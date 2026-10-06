@@ -6,7 +6,7 @@
   import { ensureFreshToken } from '../lib/auth'
   import { commonName, fmtAge, fmtDate, fmtMoney, latinName } from '../lib/format'
   import { go } from '../lib/router.svelte'
-  import { coverFor, getTree, isActive, photosFor, restoreTree, setTreeCover } from '../lib/store.svelte'
+  import { coverFor, getTree, isActive, photosFor, restoreTree, setCover } from '../lib/store.svelte'
   import ArchiveForm from './ArchiveForm.svelte'
   import PhotoForm from './PhotoForm.svelte'
   import PhotoEditForm from './PhotoEditForm.svelte'
@@ -64,7 +64,7 @@
   async function makeCover(photoId: string) {
     actionError = ''
     try {
-      await setTreeCover(id, photoId)
+      await setCover('tree', id, photoId)
     } catch (e) {
       actionError = (e as Error).message
     }
@@ -156,13 +156,13 @@
   </BottomSheet>
 
   <BottomSheet bind:open={archiving} title="Archive tree" {busy}>
-    <ArchiveForm treeId={tree.id} bind:busy ondone={() => (archiving = false)} />
+    <ArchiveForm kind="tree" id={tree.id} bind:busy ondone={() => (archiving = false)} />
   </BottomSheet>
 
   <BottomSheet bind:open={photoEditOpen} title="Photo" {busy}>
     {#if editingPhoto}
       {#key editingPhoto.id}
-        <PhotoEditForm photo={editingPhoto} bind:busy ondone={() => (photoEditOpen = false)} />
+        <PhotoEditForm photo={editingPhoto} isCover={cover?.id === editingPhoto.id} bind:busy ondone={() => (photoEditOpen = false)} />
       {/key}
     {/if}
   </BottomSheet>

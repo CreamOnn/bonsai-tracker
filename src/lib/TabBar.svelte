@@ -8,11 +8,13 @@
     { route: 'pots', label: 'Pots', icon: 'pot' },
     { route: 'settings', label: 'Settings', icon: 'settings' },
   ]
+  // Maker pages belong to the Pots tab.
+  let current = $derived(router.route === 'makers' ? 'pots' : router.route)
 </script>
 
 <nav>
   {#each tabs as t (t.route)}
-    <button class:active={router.route === t.route} onclick={() => go(t.route)} aria-current={router.route === t.route ? 'page' : undefined}>
+    <button class:active={current === t.route} onclick={() => go(t.route)} aria-current={current === t.route ? 'page' : undefined}>
       <Icon name={t.icon} />
       <span>{t.label}</span>
     </button>

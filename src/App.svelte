@@ -6,11 +6,13 @@
   import { loadDb, ui } from './lib/store.svelte'
   import SignIn from './views/SignIn.svelte'
   import Home from './views/Home.svelte'
-  import Placeholder from './views/Placeholder.svelte'
   import Settings from './views/Settings.svelte'
-  import Trees from './views/Trees.svelte'
+  import Collection from './views/Collection.svelte'
   import TreeDetail from './views/TreeDetail.svelte'
   import TreeForm from './views/TreeForm.svelte'
+  import PotDetail from './views/PotDetail.svelte'
+  import PotForm from './views/PotForm.svelte'
+  import MakerDetail from './views/MakerDetail.svelte'
   import TabBar from './lib/TabBar.svelte'
   import Fab from './lib/Fab.svelte'
   import BottomSheet from './lib/BottomSheet.svelte'
@@ -93,9 +95,13 @@
     {:else if router.route === 'trees' && router.param}
       {#key router.param}<TreeDetail id={router.param} />{/key}
     {:else if router.route === 'trees'}
-      <Trees />
+      <Collection kind="tree" />
+    {:else if router.route === 'pots' && router.param}
+      {#key router.param}<PotDetail id={router.param} />{/key}
     {:else if router.route === 'pots'}
-      <Placeholder title="Pots" note="Your pots will live here." icon="pot" />
+      <Collection kind="pot" />
+    {:else if router.route === 'makers'}
+      {#key router.param}<MakerDetail id={router.param} />{/key}
     {:else}
       <Settings {workspace} onsignout={leave} />
     {/if}
@@ -108,6 +114,15 @@
       onsaved={(t) => {
         ui.addTree = false
         go('trees', t.id)
+      }}
+    />
+  </BottomSheet>
+  <BottomSheet bind:open={ui.addPot} title="New pot" busy={addBusy}>
+    <PotForm
+      bind:busy={addBusy}
+      onsaved={(p) => {
+        ui.addPot = false
+        go('pots', p.id)
       }}
     />
   </BottomSheet>

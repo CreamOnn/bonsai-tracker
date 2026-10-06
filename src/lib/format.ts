@@ -40,6 +40,21 @@ export function latinName(species: string) {
   return species.replace(/\s*\([^)]+\)\s*$/, '')
 }
 
+/** Archive status for display. Pots store 'died' but show it as broken. */
+export function statusLabel(status: string, kind: 'tree' | 'pot' = 'tree') {
+  if (status === 'died' && kind === 'pot') return 'Broken'
+  return { sold: 'Sold', died: 'Died', gifted: 'Gifted' }[status] ?? status
+}
+
+export const isRound = (style: string) => /^round\b/i.test(style ?? '')
+
+/** "45 × 32 × 9 cm", or "Ø 30 × 8 cm" for round pots. Missing values are skipped. */
+export function fmtSize(pot: Record<string, string>) {
+  const parts = isRound(pot.style) ? [pot.length_cm && `Ø ${pot.length_cm}`, pot.height_cm] : [pot.length_cm, pot.width_cm, pot.height_cm]
+  const shown = parts.filter(Boolean)
+  return shown.length ? `${shown.join(' × ')} cm` : ''
+}
+
 /** Keeps digits and one decimal point; '' if nothing usable. */
 export function cleanNumber(v: string) {
   const s = String(v ?? '').replace(/[^\d.]/g, '')

@@ -3,9 +3,10 @@
 
 export const TABS: Record<string, string[]> = {
   Trees: ['id', 'species', 'style', 'origin_year', 'price_paid', 'source', 'notes', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at'],
-  Pots: ['id', 'maker_id', 'style', 'length_cm', 'width_cm', 'height_cm', 'origin_year', 'price', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at'],
+  // New columns go at the end so existing Sheets line up (missing headers are appended on load).
+  Pots: ['id', 'maker_id', 'style', 'length_cm', 'width_cm', 'height_cm', 'origin_year', 'price', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at', 'glaze', 'glaze_colour', 'source', 'notes'],
   Makers: ['id', 'name', 'country'],
-  Photos: ['id', 'owner_type', 'owner_id', 'drive_file_id', 'date', 'caption', 'created_at', 'thumb_file_id'],
+  Photos: ['id', 'owner_type', 'owner_id', 'drive_file_id', 'date', 'caption', 'created_at', 'thumb_file_id', 'slot'],
   CareLog: ['id', 'date', 'care_type', 'tree_id', 'notes', 'round_id', 'created_at'],
   CareTypes: ['name', 'built_in', 'schedulable', 'active_months'],
   Schedules: ['species', 'tree_id', 'care_type', 'interval_days', 'active_months'],
@@ -93,14 +94,37 @@ const POT_STYLES = [
   'Semi-cascade',
 ]
 
+const GLAZE_COLOURS = [
+  'Celadon',
+  'Nama',
+  'Shino',
+  'Tenmoku',
+  'Ivory',
+  'Cobalt blue',
+  'Oribe green',
+  'Namako',
+  'Kinyo',
+  'Brown clay',
+  'Grey clay',
+  'Red clay',
+  'Black clay',
+]
+
+const COUNTRIES = ['Japan', 'China', 'Australia', 'United Kingdom', 'United States', 'Korea', 'Germany', 'Czech Republic', 'Taiwan']
+
+/** Starter values per list. Lists added in later versions are seeded into existing Sheets on load. */
+export const LIST_SEEDS: Record<string, string[]> = {
+  species: SPECIES,
+  tree_style: TREE_STYLES,
+  pot_style: POT_STYLES,
+  glaze_colour: GLAZE_COLOURS,
+  country: COUNTRIES,
+}
+
 export function seedRows(schemaVersion: number): Record<string, string[][]> {
   return {
     CareTypes: CARE_TYPES.map(([name, sched, months]) => [name, 'y', sched ? 'y' : 'n', months]),
-    Lists: [
-      ...SPECIES.map((v) => ['species', v]),
-      ...TREE_STYLES.map((v) => ['tree_style', v]),
-      ...POT_STYLES.map((v) => ['pot_style', v]),
-    ],
+    Lists: Object.entries(LIST_SEEDS).flatMap(([list, values]) => values.map((v) => [list, v])),
     Meta: [
       ['schema_version', String(schemaVersion)],
       ['created_at', new Date().toISOString()],

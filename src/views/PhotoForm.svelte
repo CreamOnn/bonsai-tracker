@@ -2,13 +2,15 @@
   import { onDestroy, untrack } from 'svelte'
   import { todayISO } from '../lib/format'
   import { exifDate } from '../lib/photos'
-  import { addPhoto } from '../lib/store.svelte'
+  import SlotPicker from '../lib/SlotPicker.svelte'
+  import { addPhoto, type PotSlot } from '../lib/store.svelte'
 
   let {
     file,
     ownerType,
     ownerId,
     defaultCover,
+    defaultSlot = 'front',
     ondone,
     busy = $bindable(false),
   }: {
@@ -16,9 +18,12 @@
     ownerType: 'tree' | 'pot'
     ownerId: string
     defaultCover: boolean
+    defaultSlot?: PotSlot
     ondone: () => void
     busy?: boolean
   } = $props()
+
+  let slot = $state<PotSlot>(untrack(() => defaultSlot))
 
   // The parent re-creates this form per file ({#key}), so initial values are enough.
   const initialFile = untrack(() => file)
@@ -42,7 +47,7 @@
     busy = true
     error = ''
     try {
-      await addPhoto({ ownerType, ownerId, file, date, caption, makeCover })
+      await addPhoto({ ownerType, ownerId, file, date, caption, makeCover, slot: ownerType === 'pot' ? slot : undefined })
       ondone()
     } catch (e) {
       error = (e as Error).message
@@ -53,6 +58,10 @@
 </script>
 
 <div class="preview"><img src={preview} alt="Selected" /></div>
+
+{#if ownerType === 'pot'}
+  <div class="slot"><SlotPicker bind:value={slot} /></div>
+{/if}
 
 <label class="field">
   <span class="label">Date{fromPhoto ? ' · from photo' : ''}</span>
@@ -87,6 +96,9 @@
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+  .slot {
+    margin-bottom: 20px;
   }
   .toggle {
     display: flex;

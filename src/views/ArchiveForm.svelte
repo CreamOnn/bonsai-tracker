@@ -1,14 +1,15 @@
 <script lang="ts">
   import { cleanNumber, todayISO } from '../lib/format'
-  import { archiveTree, type ArchiveStatus } from '../lib/store.svelte'
+  import { archiveRecord, type ArchiveStatus, type Kind } from '../lib/store.svelte'
 
-  let { treeId, ondone, busy = $bindable(false) }: { treeId: string; ondone: () => void; busy?: boolean } = $props()
+  let { kind, id, ondone, busy = $bindable(false) }: { kind: Kind; id: string; ondone: () => void; busy?: boolean } = $props()
 
-  const options: { value: ArchiveStatus; label: string }[] = [
+  let options = $derived<{ value: ArchiveStatus; label: string }[]>([
     { value: 'sold', label: 'Sold' },
     { value: 'gifted', label: 'Gifted' },
-    { value: 'died', label: 'Died' },
-  ]
+    // A pot can't die, but it can break.
+    { value: 'died', label: kind === 'pot' ? 'Broken' : 'Died' },
+  ])
   let status = $state<ArchiveStatus>('sold')
   let date = $state(todayISO())
   let salePrice = $state('')
@@ -18,7 +19,7 @@
     busy = true
     error = ''
     try {
-      await archiveTree(treeId, status, date, cleanNumber(salePrice))
+      await archiveRecord(kind, id, status, date, cleanNumber(salePrice))
       ondone()
     } catch (e) {
       error = (e as Error).message
@@ -28,7 +29,7 @@
   }
 </script>
 
-<p class="intro">Archived trees keep their photos and history, and move to the end of the grid.</p>
+<p class="intro">Archived {kind}s keep their photos and history, and move to the end of the grid.</p>
 
 <div class="seg" role="radiogroup" aria-label="Reason">
   {#each options as o (o.value)}
@@ -51,7 +52,7 @@
 
 <div class="form-actions">
   {#if error}<p class="form-error">{error}</p>{/if}
-  <button class="btn" onclick={save} disabled={busy || !date}>{busy ? 'Saving…' : 'Archive tree'}</button>
+  <button class="btn" onclick={save} disabled={busy || !date}>{busy ? 'Saving…' : `Archive ${kind}`}</button>
 </div>
 
 <style>
