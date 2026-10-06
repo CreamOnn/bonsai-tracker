@@ -5,7 +5,8 @@
   import { dueFor, fmtInterval, fmtWindows, hasSchedule, schedulableTypes, type Due } from '../lib/due'
   import { commonName, fmtDate } from '../lib/format'
   import { go } from '../lib/router.svelte'
-  import { getSchedule, isActive, setSchedule, type Row } from '../lib/store.svelte'
+  import { ensureFreshToken } from '../lib/auth'
+  import { getSchedule, isActive, openLogCare, setSchedule, type Row } from '../lib/store.svelte'
 
   let { tree }: { tree: Row } = $props()
 
@@ -21,6 +22,14 @@
   let editing = $state<Due | null>(null)
   let override = $state('')
   let error = $state('')
+
+  // A due row goes straight to logging it; other rows open the tree-only interval.
+  function tap(d: Due) {
+    if (d.due) {
+      ensureFreshToken()
+      openLogCare({ treeId: tree.id, careType: d.careType })
+    } else edit(d)
+  }
 
   function edit(d: Due) {
     editing = d
@@ -69,15 +78,18 @@
   <ul>
     {#each visibleRows as d (d.careType)}
       <li>
-        <button onclick={() => edit(d)} class:due={d.due}>
+        <button class="main" onclick={() => tap(d)} class:due={d.due}>
           <span class="type">{d.careType}</span>
           <span class="right">
-            <span class="status">{status(d)}</span>
+            <span class="status">{status(d)}{d.due ? ' · log ›' : ''}</span>
             {#if d.interval}
               <span class="meta">{fmtInterval(d.interval)}{d.intervalSource === 'tree' ? ' · this tree' : ''}{d.last ? ` · last ${fmtDate(d.last)}` : ''}</span>
             {/if}
           </span>
         </button>
+        {#if d.due}
+          <button class="iv" onclick={() => edit(d)} aria-label={`Change ${d.careType} interval for this tree`}>Interval</button>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -124,16 +136,29 @@
     margin: 0;
     padding: 0;
   }
-  li button {
-    width: 100%;
+  li {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--line);
+  }
+  .main {
+    flex: 1;
+    min-width: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 16px;
     min-height: 58px;
     padding: 10px 0;
-    border-bottom: 1px solid var(--line);
     text-align: left;
+  }
+  .iv {
+    flex: none;
+    margin-left: 12px;
+    padding: 0 0 0 12px;
+    border-left: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
   }
   .type {
     font-size: 16px;
