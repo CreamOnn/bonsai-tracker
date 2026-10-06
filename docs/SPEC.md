@@ -66,6 +66,16 @@ Bonsai Tracker/
 3. A tree is due when *today − last logged date for that care type ≥ interval*. A tree that has never had that care logged counts as due immediately.
 4. Species intervals start blank, and you set them yourself.
 
+### 6b. Seasonal windows (added 06/10/2026, replaces month seasons)
+
+- A **window** is a span between half-month points (1st or 16th to the 15th or the end of a month), e.g. *1 Sep – 15 Dec* or *1 Mar – end Apr*. Windows can wrap past the end of the year and repeat every year.
+- **Care-type default windows** (e.g. Fertilise) have no interval of their own.
+- **Species windows** replace the care-type windows for that species. Each can have its own **interval** and, for types that record a product, an optional **product**.
+- **Interval used:** tree override → current window's interval → species base interval → none.
+- **In season** when today falls inside one of the effective windows (no windows = all year). Out of season shows when the next window starts.
+- **Window products** apply to standard trees only. P-sensitive trees always get the P-safe default (§6a).
+- **Storage:** a new `Windows` tab (care_type, species = blank for the care-type default, from, to as `MMa`/`MMb` half-month codes, interval_days, product). Existing month seasons are converted once on load.
+
 ## 6a. Phosphorus-sensitive trees (added 06/10/2026)
 
 Some Australian natives need a low-phosphorus fertiliser.

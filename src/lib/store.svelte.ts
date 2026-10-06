@@ -3,7 +3,8 @@ import type { Workspace } from './drive'
 import { newId, todayISO } from './format'
 import { resizeImage, trashFile, uploadJpeg } from './photos'
 import { LIST_SEEDS } from './schema'
-import { appendRow, appendRows, asRow, deleteRow, loadAll, updateRow, type Row } from './sheets'
+import { appendRow, appendRows, asRow, deleteRow, deleteRows, loadAll, updateRow, type Row } from './sheets'
+import { halfCode, parseHalf, windowsFromMonths, type Window } from './windows'
 
 export type { Row }
 export type ArchiveStatus = 'sold' | 'died' | 'gifted'
@@ -25,6 +26,7 @@ export const db = $state({
   careLog: [] as Row[],
   careTypes: [] as Row[],
   schedules: [] as Row[],
+  windows: [] as Row[],
   meta: [] as Row[],
 })
 
@@ -50,8 +52,63 @@ export async function loadDb(workspace: Workspace) {
   db.careLog = all.CareLog
   db.careTypes = all.CareTypes
   db.schedules = all.Schedules
+  db.windows = all.Windows
   db.meta = all.Meta
   await seedNewLists()
+  await migrateMonthSeasons()
+}
+
+/**
+ * One-off: whole-month seasons (CareTypes.active_months, Schedules.active_months) become
+ * half-month windows (SPEC §6b). Recorded in Meta so it never runs twice.
+ */
+async function migrateMonthSeasons() {
+  if (getMeta('windows_migrated')) return
+  const rows: Record<string, string>[] = []
+  const add = (care_type: string, species: string, months: string, interval = '') => {
+    for (const w of windowsFromMonths(months)) {
+      rows.push({ care_type, species, from: halfCode(w.from), to: halfCode(w.to), interval_days: interval, product: '' })
+    }
+  }
+  for (const ct of db.careTypes) if (ct.active_months) add(ct.name, '', ct.active_months)
+  for (const s of db.schedules) if (s.species && !s.tree_id && s.active_months) add(s.care_type, s.species, s.active_months)
+  const nums = await appendRows('Windows', rows)
+  rows.forEach((r, i) => db.windows.push(asRow(r, nums[i])))
+  await setMeta({ windows_migrated: new Date().toISOString() })
+}
+
+// Windows
+
+/** Windows for a care type: the species' own if given and present, else none (callers fall back to the default). */
+export function windowRows(careType: string, species: string) {
+  return db.windows.filter((w) => w.care_type === careType && w.species === species)
+}
+
+export function toWindows(rows: Row[]): Window[] {
+  return rows
+    .map((r) => ({ from: parseHalf(r.from) ?? 0, to: parseHalf(r.to) ?? 0, interval: Number(r.interval_days) || null, product: r.product }))
+    .filter((w) => w.from && w.to)
+    .sort((a, b) => a.from - b.from)
+}
+
+/** Replaces all windows for (care type, species). species '' = the care type's default windows. */
+export async function setWindows(careType: string, species: string, windows: Window[]) {
+  const old = windowRows(careType, species)
+  await deleteRows('Windows', old.map((r) => r._row))
+  const removed = old.map((r) => r._row)
+  db.windows = db.windows.filter((r) => !old.includes(r))
+  for (const r of db.windows) r._row -= removed.filter((n) => n < r._row).length
+
+  const rows = windows.map((w) => ({
+    care_type: careType,
+    species,
+    from: halfCode(w.from),
+    to: halfCode(w.to),
+    interval_days: w.interval ? String(w.interval) : '',
+    product: w.product ?? '',
+  }))
+  const nums = await appendRows('Windows', rows)
+  rows.forEach((r, i) => db.windows.push(asRow(r, nums[i])))
 }
 
 // Meta: key/value settings
@@ -333,16 +390,13 @@ export function getCareType(name: string) {
 export const isSchedulable = (ct: Row) => ct.schedulable === 'y'
 export const usesProduct = (ct: Row | undefined) => (!ct ? false : ct.uses_product ? ct.uses_product === 'y' : PRODUCT_DEFAULT.has(ct.name))
 
-export async function saveCareType(
-  fields: { name: string; schedulable: boolean; usesProduct: boolean; activeMonths?: string },
-  existingName?: string,
-) {
+// CareTypes.active_months is legacy: seasons now live in the Windows tab (SPEC §6b).
+export async function saveCareType(fields: { name: string; schedulable: boolean; usesProduct: boolean }, existingName?: string) {
   const row: Record<string, string> = {
     name: fields.name.trim(),
     schedulable: fields.schedulable ? 'y' : 'n',
     uses_product: fields.usesProduct ? 'y' : 'n',
   }
-  if (fields.activeMonths !== undefined) row.active_months = fields.activeMonths
   const existing = existingName ? getCareType(existingName) : undefined
   if (existing) {
     await updateRow('CareTypes', existing._row, { ...existing, ...row })
@@ -350,17 +404,10 @@ export async function saveCareType(
     return existing
   }
   if (getCareType(row.name)) throw new Error(`"${row.name}" already exists.`)
-  const full = { ...row, built_in: 'n', active_months: row.active_months ?? '' }
+  const full = { ...row, built_in: 'n', active_months: '' }
   const _row = await appendRow('CareTypes', full)
   db.careTypes.push(asRow(full, _row))
   return db.careTypes[db.careTypes.length - 1]
-}
-
-export async function setCareTypeMonths(name: string, activeMonths: string) {
-  const ct = getCareType(name)
-  if (!ct) return
-  await updateRow('CareTypes', ct._row, { ...ct, active_months: activeMonths })
-  ct.active_months = activeMonths
 }
 
 // Care log
@@ -427,7 +474,8 @@ export async function deleteCare(id: string) {
   if (c) await removeRow('CareLog', db.careLog, c)
 }
 
-// Schedules: a row is either a species default (species set) or a tree override (tree_id set).
+// Schedules: a row is either a species base interval (species set) or a tree override (tree_id set).
+// Schedules.active_months is legacy: seasons now live in the Windows tab (SPEC §6b).
 
 export function getSchedule(key: { species?: string; treeId?: string }, careType: string) {
   return db.schedules.find(
@@ -435,16 +483,16 @@ export function getSchedule(key: { species?: string; treeId?: string }, careType
   )
 }
 
-export async function setSchedule(key: { species?: string; treeId?: string }, careType: string, fields: { interval_days?: string; active_months?: string }) {
+export async function setSchedule(key: { species?: string; treeId?: string }, careType: string, intervalDays: string) {
   const existing = getSchedule(key, careType)
   const next = {
     species: key.treeId ? '' : (key.species ?? ''),
     tree_id: key.treeId ?? '',
     care_type: careType,
-    interval_days: fields.interval_days ?? existing?.interval_days ?? '',
-    active_months: fields.active_months ?? existing?.active_months ?? '',
+    interval_days: intervalDays,
+    active_months: '',
   }
-  const empty = !next.interval_days && !next.active_months
+  const empty = !next.interval_days
   if (existing) {
     if (empty) return removeRow('Schedules', db.schedules, existing)
     await updateRow('Schedules', existing._row, next)

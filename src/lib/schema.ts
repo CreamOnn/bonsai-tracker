@@ -11,6 +11,8 @@ export const TABS: Record<string, string[]> = {
   CareTypes: ['name', 'built_in', 'schedulable', 'active_months', 'uses_product'],
   Schedules: ['species', 'tree_id', 'care_type', 'interval_days', 'active_months'],
   Lists: ['list', 'value'],
+  // Seasonal windows (SPEC §6b). species blank = care-type default. from/to are half-month codes, e.g. 09a.
+  Windows: ['care_type', 'species', 'from', 'to', 'interval_days', 'product'],
   Meta: ['key', 'value'],
 }
 

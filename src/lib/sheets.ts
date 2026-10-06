@@ -109,6 +109,15 @@ export async function appendRows(tab: string, objs: Record<string, unknown>[]): 
   return objs.map((_, i) => first + i)
 }
 
+/** Removes several rows in one request (bottom-up, so earlier deletions don't shift later ones). */
+export async function deleteRows(tab: string, rows: number[]) {
+  if (!rows.length) return
+  const requests = [...rows]
+    .sort((a, b) => b - a)
+    .map((row) => ({ deleteDimension: { range: { sheetId: tabIds[tab], dimension: 'ROWS', startIndex: row - 1, endIndex: row } } }))
+  await gjson(`${API}/${sheetId}:batchUpdate`, jsonBody({ requests }))
+}
+
 /** Removes a row; rows below it move up by one, so callers must renumber their copies. */
 export async function deleteRow(tab: string, row: number) {
   await gjson(

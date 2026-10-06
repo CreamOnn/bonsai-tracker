@@ -2,7 +2,7 @@
   // The tree page's Schedule section: one row per schedulable care type, with a per-tree interval override.
   import BottomSheet from '../lib/BottomSheet.svelte'
   import IntervalInput from '../lib/IntervalInput.svelte'
-  import { dueFor, fmtInterval, fmtMonths, schedulableTypes, type Due } from '../lib/due'
+  import { dueFor, fmtInterval, fmtWindows, hasSchedule, schedulableTypes, type Due } from '../lib/due'
   import { commonName, fmtDate } from '../lib/format'
   import { go } from '../lib/router.svelte'
   import { getSchedule, isActive, setSchedule, type Row } from '../lib/store.svelte'
@@ -12,8 +12,9 @@
   let rows = $derived(schedulableTypes().map((ct) => dueFor(tree, ct)))
   // Unscheduled types stay tucked away unless the user wants to add a tree-only schedule.
   let showUnscheduled = $state(false)
-  let visibleRows = $derived(showUnscheduled ? rows : rows.filter((d) => d.interval))
-  let hiddenCount = $derived(rows.filter((d) => !d.interval).length)
+  let scheduled = $derived(new Set(schedulableTypes().filter((ct) => hasSchedule(tree, ct))))
+  let visibleRows = $derived(showUnscheduled ? rows : rows.filter((d) => scheduled.has(d.careType)))
+  let hiddenCount = $derived(rows.length - scheduled.size)
 
   let open = $state(false)
   let busy = $state(false)
@@ -33,7 +34,7 @@
     busy = true
     error = ''
     try {
-      await setSchedule({ treeId: tree.id }, editing.careType, { interval_days: value })
+      await setSchedule({ treeId: tree.id }, editing.careType, value)
       open = false
     } catch (e) {
       error = (e as Error).message
@@ -45,11 +46,16 @@
   function status(d: Due) {
     if (!d.interval) return 'No schedule'
     if (!isActive(tree)) return 'Archived'
-    if (!d.inSeason) return `Out of season · ${fmtMonths(d.activeMonths)}`
+    if (!d.inSeason) return d.nextSeason ? `Out of season · from ${fmtDayMonth(d.nextSeason)}` : 'Out of season'
     if (!d.last) return 'Due now · never logged'
     if (d.daysOver! > 0) return `${d.daysOver} day${d.daysOver === 1 ? '' : 's'} overdue`
     if (d.daysOver === 0) return 'Due today'
     return `Next ${fmtDate(d.next!)}`
+  }
+
+  /** 2027-03-01 → '1 Mar' */
+  function fmtDayMonth(iso: string) {
+    return new Date(`${iso}T00:00:00`).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
   }
 
   let speciesDefault = $derived(
@@ -94,7 +100,8 @@
       <span class="label">This tree</span>
       <IntervalInput bind:value={override} placeholder={speciesDefault ? 'Default' : 'None'} />
     </div>
-    <p class="season">Season: {fmtMonths(editing.activeMonths)}</p>
+    <p class="season">Season: {fmtWindows(editing.windows)}{editing.windowSource === 'species' ? ` (${commonName(tree.species)})` : ''}</p>
+    {#if editing.windows.some((w) => w.interval)}<p class="season">This species has its own interval per window. A tree interval here replaces it in every window.</p>{/if}
     <div class="form-actions">
       {#if error}<p class="form-error">{error}</p>{/if}
       <button class="btn" onclick={() => save(override)} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>

@@ -1,9 +1,12 @@
 <script lang="ts">
   // Logs one care type for one tree (opened from a tree) or many (a round, all active trees pre-ticked).
-  // Fertilise splits the chosen trees into P-sensitive and standard groups, each with its own product (SPEC §6a).
+  // For care types that record a product, the chosen trees are grouped by the product they should get:
+  //   P-sensitive trees (Fertilise only) → the P-safe default (SPEC §6a)
+  //   otherwise → the product of the seasonal window covering the date (SPEC §6b), else the standard default.
   import { untrack } from 'svelte'
   import DriveImage from '../lib/DriveImage.svelte'
   import ListSelect from '../lib/ListSelect.svelte'
+  import { dueFor } from '../lib/due'
   import { go } from '../lib/router.svelte'
   import { commonName, fmtAge, todayISO } from '../lib/format'
   import {
@@ -20,12 +23,11 @@
     saveCareType,
     ui,
     usesProduct,
-    type FertGroup,
+    type Row,
   } from '../lib/store.svelte'
 
   let { ondone, busy = $bindable(false) }: { ondone: () => void; busy?: boolean } = $props()
 
-  type Group = FertGroup | 'all'
   type ProductState = { product: string; amount: string; touched: boolean }
 
   const presetTree = untrack(() => ui.logCareTree)
@@ -37,7 +39,8 @@
   let showTrees = $state(!presetTree)
   let notes = $state('')
   let error = $state('')
-  let prod = $state<Record<Group, ProductState>>(initialProducts(untrack(() => careType)))
+  // Keyed by group: 'p' (P-sensitive) or 'w:<window product>' ('w:' = no window product).
+  let prod = $state<Record<string, ProductState>>({})
 
   // Inline "new care type"
   let addingType = $state(false)
@@ -49,39 +52,68 @@
   let showProduct = $derived(usesProduct(ct))
   let isFert = $derived(careType === FERTILISE)
   let presetName = $derived(presetTree ? commonName(db.trees.find((t) => t.id === presetTree)?.species ?? '') : '')
-
   let chosen = $derived(activeTrees.filter((t) => selected.has(t.id)))
-  let pCount = $derived(chosen.filter(isPSensitive).length)
-  let stdCount = $derived(chosen.length - pCount)
-  let pDefault = $derived(fertDefaults('p'))
-  let pWarning = $derived(isFert && pCount > 0 && !!pDefault.product && !!prod.p.product && prod.p.product !== pDefault.product)
+
+  function groupKey(t: Row) {
+    if (isFert && isPSensitive(t)) return 'p'
+    return `w:${dueFor(t, careType, date).product}`
+  }
+
+  // 'p' first, then the plain standard group, then seasonal-product groups.
+  let groups = $derived.by(() => {
+    const m = new Map<string, Row[]>()
+    for (const t of chosen) {
+      const k = groupKey(t)
+      m.set(k, [...(m.get(k) ?? []), t])
+    }
+    const rank = (k: string) => (k === 'p' ? 0 : k === 'w:' ? 1 : 2)
+    return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]))
+  })
+
+  function defaultsFor(key: string) {
+    if (key === 'p') return fertDefaults('p')
+    if (key === 'w:') return isFert ? fertDefaults('std') : { product: '', amount: '' }
+    return { product: key.slice(2), amount: '' }
+  }
 
   /** The group's default amount when its default product is chosen, otherwise the last amount used. */
-  function amountFor(type: string, group: Group, product: string) {
+  function amountFor(key: string, product: string) {
     if (!product) return ''
-    if (type === FERTILISE && group !== 'all') {
-      const d = fertDefaults(group)
-      if (d.product === product && d.amount) return d.amount
-    }
-    return lastAmount(type, product)
+    const d = defaultsFor(key)
+    if (d.product === product && d.amount) return d.amount
+    return lastAmount(careType, product)
   }
 
-  function initialProducts(type: string): Record<Group, ProductState> {
-    const make = (group: Group): ProductState => {
-      const product = type === FERTILISE && group !== 'all' ? fertDefaults(group).product : ''
-      return { product, amount: amountFor(type, group, product), touched: false }
+  // Each group gets its default product the first time it appears.
+  $effect(() => {
+    for (const [key] of groups) {
+      if (untrack(() => prod[key])) continue
+      const product = untrack(() => defaultsFor(key).product)
+      prod[key] = { product, amount: untrack(() => amountFor(key, product)), touched: false }
     }
-    return { p: make('p'), std: make('std'), all: make('all') }
-  }
+  })
 
   // Changing a product refreshes its amount, unless the user typed one.
   $effect(() => {
-    for (const g of ['p', 'std', 'all'] as Group[]) {
-      const s = prod[g]
+    for (const key of Object.keys(prod)) {
+      const s = prod[key]
       const product = s.product
-      if (!untrack(() => s.touched)) s.amount = amountFor(untrack(() => careType), g, product)
+      if (!untrack(() => s.touched)) s.amount = untrack(() => amountFor(key, product))
     }
   })
+
+  let pDefault = $derived(fertDefaults('p'))
+  let pWarning = $derived(isFert && !!pDefault.product && !!prod.p?.product && prod.p.product !== pDefault.product)
+
+  function title(key: string, count: number) {
+    const n = `${count} tree${count === 1 ? '' : 's'}`
+    if (key === 'p') return `Phosphorus-sensitive · ${n}`
+    if (key === 'w:') return `${isFert ? 'Standard' : 'Trees'} · ${n}`
+    return `Seasonal: ${key.slice(2)} · ${n}`
+  }
+
+  // A single group with nothing special about it needs no box.
+  let plain = $derived(groups.length === 1 && groups[0][0] === 'w:' && !isFert)
 
   // Product lists are per care type, so switching type resets the products.
   function pickType(e: Event) {
@@ -95,7 +127,7 @@
       return
     }
     careType = v
-    prod = initialProducts(v)
+    prod = {}
   }
 
   async function createType() {
@@ -104,7 +136,7 @@
     try {
       const created = await saveCareType({ name: newName, schedulable: newSchedulable, usesProduct: newUsesProduct })
       careType = created.name
-      prod = initialProducts(created.name)
+      prod = {}
       addingType = false
     } catch (e) {
       error = (e as Error).message
@@ -130,8 +162,8 @@
         date,
         notes,
         items: chosen.map((t) => {
-          const g: Group = isFert ? (isPSensitive(t) ? 'p' : 'std') : 'all'
-          return { treeId: t.id, product: showProduct ? prod[g].product : '', amount: showProduct ? prod[g].amount : '' }
+          const s = prod[groupKey(t)]
+          return { treeId: t.id, product: showProduct ? (s?.product ?? '') : '', amount: showProduct ? (s?.amount ?? '') : '' }
         }),
       })
       ondone()
@@ -143,20 +175,22 @@
   }
 </script>
 
-{#snippet productFields(group: Group, title: string)}
-  <div class:groupbox={group !== 'all'}>
-    {#if group !== 'all'}<p class="grouptitle">{title}</p>{/if}
-    <ListSelect label="Product" list={productList(careType)} bind:value={prod[group].product} />
-    <label class="field">
-      <span class="label">Amount · optional</span>
-      <input bind:value={prod[group].amount} oninput={() => (prod[group].touched = true)} placeholder="e.g. 5 ml/L" />
-    </label>
-    {#if group === 'p' && pWarning}
-      <p class="warn">This isn't your phosphorus-safe fertiliser ({pDefault.product}).</p>
-    {:else if group === 'p' && !pDefault.product}
-      <p class="hint small">Set your phosphorus-safe fertiliser in <button class="link" onclick={() => go('settings', 'fertilisers')}>Settings → Fertilisers</button>.</p>
-    {/if}
-  </div>
+{#snippet productFields(key: string, heading: string)}
+  {#if prod[key]}
+    <div class:groupbox={!plain}>
+      {#if !plain}<p class="grouptitle">{heading}</p>{/if}
+      <ListSelect label="Product" list={productList(careType)} bind:value={prod[key].product} />
+      <label class="field">
+        <span class="label">Amount · optional</span>
+        <input bind:value={prod[key].amount} oninput={() => (prod[key].touched = true)} placeholder="e.g. 5 ml/L" />
+      </label>
+      {#if key === 'p' && pWarning}
+        <p class="warn">This isn't your phosphorus-safe fertiliser ({pDefault.product}).</p>
+      {:else if key === 'p' && !pDefault.product}
+        <p class="hint small">Set your phosphorus-safe fertiliser in <button class="link" onclick={() => go('settings', 'fertilisers')}>Settings → Fertilisers</button>.</p>
+      {/if}
+    </div>
+  {/if}
 {/snippet}
 
 {#if addingType}
@@ -190,12 +224,7 @@
 </label>
 
 {#if showProduct}
-  {#if isFert}
-    {#if pCount > 0}{@render productFields('p', `Phosphorus-sensitive · ${pCount} tree${pCount === 1 ? '' : 's'}`)}{/if}
-    {#if stdCount > 0}{@render productFields('std', `Standard · ${stdCount} tree${stdCount === 1 ? '' : 's'}`)}{/if}
-  {:else}
-    {@render productFields('all', '')}
-  {/if}
+  {#each groups as [key, trees] (key)}{@render productFields(key, title(key, trees.length))}{/each}
 {/if}
 
 <div class="field">
