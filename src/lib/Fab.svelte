@@ -1,11 +1,18 @@
 <script lang="ts">
   import { ensureFreshToken } from './auth'
   import Icon from './Icon.svelte'
-  import { ui } from './store.svelte'
+  import { openLogCare, ui } from './store.svelte'
 
   let open = $state(false)
   const items: { label: string; icon: 'tree' | 'pot' | 'care'; action?: () => void }[] = [
-    { label: 'Log round', icon: 'care' },
+    {
+      label: 'Log care',
+      icon: 'care',
+      action: () => {
+        ensureFreshToken()
+        openLogCare()
+      },
+    },
     {
       label: 'Add pot',
       icon: 'pot',

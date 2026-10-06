@@ -6,8 +6,10 @@
   import { ensureFreshToken } from '../lib/auth'
   import { commonName, fmtAge, fmtDate, fmtMoney, latinName } from '../lib/format'
   import { go } from '../lib/router.svelte'
-  import { coverFor, getTree, isActive, photosFor, restoreTree, setCover } from '../lib/store.svelte'
+  import { coverFor, getTree, isActive, openLogCare, photosFor, restoreTree, setCover } from '../lib/store.svelte'
   import ArchiveForm from './ArchiveForm.svelte'
+  import CareHistory from './CareHistory.svelte'
+  import TreeSchedule from './TreeSchedule.svelte'
   import PhotoForm from './PhotoForm.svelte'
   import PhotoEditForm from './PhotoEditForm.svelte'
   import type { Row } from '../lib/store.svelte'
@@ -107,6 +109,9 @@
 
   <div class="actions">
     <button onclick={pickPhoto}><Icon name="camera" /><span>Photo</span></button>
+    {#if isActive(tree)}
+      <button onclick={() => (ensureFreshToken(), openLogCare({ treeId: tree!.id }))}><Icon name="care" /><span>Care</span></button>
+    {/if}
     <button onclick={() => (ensureFreshToken(), (editing = true))}><Icon name="edit" /><span>Edit</span></button>
     {#if isActive(tree)}
       <button onclick={() => (ensureFreshToken(), (archiving = true))}><Icon name="archive" /><span>Archive</span></button>
@@ -123,6 +128,9 @@
     {#if tree.source}<div><dt class="label">Source</dt><dd>{tree.source}</dd></div>{/if}
     {#if tree.notes}<div class="notes"><dt class="label">Notes</dt><dd>{tree.notes}</dd></div>{/if}
   </dl>
+
+  <TreeSchedule {tree} />
+  <CareHistory treeId={tree.id} />
 
   <section>
     <h2 class="label">Photos · {photos.length}</h2>

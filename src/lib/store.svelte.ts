@@ -22,9 +22,19 @@ export const db = $state({
   makers: [] as Row[],
   photos: [] as Row[],
   lists: [] as Row[],
+  careLog: [] as Row[],
+  careTypes: [] as Row[],
+  schedules: [] as Row[],
 })
 
-export const ui = $state({ addTree: false, addPot: false })
+// logCareTree preselects one tree (single entry); empty means a round with all active trees ticked.
+export const ui = $state({ addTree: false, addPot: false, logCare: false, logCareType: '', logCareTree: '' })
+
+export function openLogCare(opts: { treeId?: string; careType?: string } = {}) {
+  ui.logCareTree = opts.treeId ?? ''
+  ui.logCareType = opts.careType ?? ''
+  ui.logCare = true
+}
 
 let ws: Workspace
 
@@ -36,7 +46,19 @@ export async function loadDb(workspace: Workspace) {
   db.makers = all.Makers
   db.photos = all.Photos
   db.lists = all.Lists
+  db.careLog = all.CareLog
+  db.careTypes = all.CareTypes
+  db.schedules = all.Schedules
   await seedNewLists()
+}
+
+/** Deletes a Sheet row and renumbers the in-memory rows below it. */
+async function removeRow(tab: string, rows: Row[], row: Row) {
+  await deleteRow(tab, row._row)
+  const removed = row._row
+  const i = rows.indexOf(row)
+  if (i >= 0) rows.splice(i, 1)
+  for (const r of rows) if (r._row > removed) r._row -= 1
 }
 
 /** Seeds any list that has no values yet (lists introduced after the Sheet was created). */
@@ -207,9 +229,7 @@ export async function updatePhoto(id: string, fields: { date: string; caption: s
 export async function deletePhoto(id: string) {
   const photo = getPhoto(id)
   if (!photo) return
-  await deleteRow('Photos', photo._row)
-  db.photos = db.photos.filter((p) => p.id !== id)
-  for (const p of db.photos) if (p._row > photo._row) p._row -= 1
+  await removeRow('Photos', db.photos, photo)
 
   const kind = photo.owner_type as Kind
   const owner = kind in TABLE ? getRecord(kind, photo.owner_id) : undefined
@@ -221,4 +241,130 @@ export async function deletePhoto(id: string) {
 
 export function setCover(kind: Kind, ownerId: string, photoId: string) {
   return saveRecord(kind, { cover_photo_id: photoId }, ownerId)
+}
+
+// Care types
+
+// Types that show Product + Amount unless the Sheet says otherwise.
+const PRODUCT_DEFAULT = new Set(['Fertilise', 'Insecticide', 'Fungicide', 'Lime sulfured'])
+
+export function getCareType(name: string) {
+  return db.careTypes.find((c) => c.name === name)
+}
+
+export const isSchedulable = (ct: Row) => ct.schedulable === 'y'
+export const usesProduct = (ct: Row | undefined) => (!ct ? false : ct.uses_product ? ct.uses_product === 'y' : PRODUCT_DEFAULT.has(ct.name))
+
+export async function saveCareType(
+  fields: { name: string; schedulable: boolean; usesProduct: boolean; activeMonths?: string },
+  existingName?: string,
+) {
+  const row: Record<string, string> = {
+    name: fields.name.trim(),
+    schedulable: fields.schedulable ? 'y' : 'n',
+    uses_product: fields.usesProduct ? 'y' : 'n',
+  }
+  if (fields.activeMonths !== undefined) row.active_months = fields.activeMonths
+  const existing = existingName ? getCareType(existingName) : undefined
+  if (existing) {
+    await updateRow('CareTypes', existing._row, { ...existing, ...row })
+    Object.assign(existing, row)
+    return existing
+  }
+  if (getCareType(row.name)) throw new Error(`"${row.name}" already exists.`)
+  const full = { ...row, built_in: 'n', active_months: row.active_months ?? '' }
+  const _row = await appendRow('CareTypes', full)
+  db.careTypes.push(asRow(full, _row))
+  return db.careTypes[db.careTypes.length - 1]
+}
+
+export async function setCareTypeMonths(name: string, activeMonths: string) {
+  const ct = getCareType(name)
+  if (!ct) return
+  await updateRow('CareTypes', ct._row, { ...ct, active_months: activeMonths })
+  ct.active_months = activeMonths
+}
+
+// Care log
+
+export const productList = (careType: string) => `product:${careType}`
+
+export function careFor(treeId: string) {
+  return db.careLog
+    .filter((c) => c.tree_id === treeId)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at))
+}
+
+export function getCare(id: string) {
+  return db.careLog.find((c) => c.id === id)
+}
+
+/** Amount from the most recent entry with this care type and product. */
+export function lastAmount(careType: string, product: string) {
+  let best: Row | undefined
+  for (const c of db.careLog) {
+    if (c.care_type !== careType || c.product !== product || !c.amount) continue
+    if (!best || c.date > best.date || (c.date === best.date && c.created_at > best.created_at)) best = c
+  }
+  return best?.amount ?? ''
+}
+
+/** One CareLog row per tree; rows logged together share a round_id. */
+export async function logCare(opts: { careType: string; date: string; treeIds: string[]; notes: string; product: string; amount: string }) {
+  const round = opts.treeIds.length > 1 ? newId('r') : ''
+  const now = new Date().toISOString()
+  const rows = opts.treeIds.map((tree_id) => ({
+    id: newId('c'),
+    date: opts.date,
+    care_type: opts.careType,
+    tree_id,
+    notes: opts.notes.trim(),
+    round_id: round,
+    created_at: now,
+    product: opts.product,
+    amount: opts.amount.trim(),
+  }))
+  const nums = await appendRows('CareLog', rows)
+  rows.forEach((r, i) => db.careLog.push(asRow(r, nums[i])))
+}
+
+export async function updateCare(id: string, fields: { date: string; notes: string; product: string; amount: string }) {
+  const c = getCare(id)
+  if (!c) return
+  const next = { date: fields.date, notes: fields.notes.trim(), product: fields.product, amount: fields.amount.trim() }
+  await updateRow('CareLog', c._row, { ...c, ...next })
+  Object.assign(c, next)
+}
+
+export async function deleteCare(id: string) {
+  const c = getCare(id)
+  if (c) await removeRow('CareLog', db.careLog, c)
+}
+
+// Schedules: a row is either a species default (species set) or a tree override (tree_id set).
+
+export function getSchedule(key: { species?: string; treeId?: string }, careType: string) {
+  return db.schedules.find(
+    (s) => s.care_type === careType && (key.treeId ? s.tree_id === key.treeId : !s.tree_id && s.species === key.species),
+  )
+}
+
+export async function setSchedule(key: { species?: string; treeId?: string }, careType: string, fields: { interval_days?: string; active_months?: string }) {
+  const existing = getSchedule(key, careType)
+  const next = {
+    species: key.treeId ? '' : (key.species ?? ''),
+    tree_id: key.treeId ?? '',
+    care_type: careType,
+    interval_days: fields.interval_days ?? existing?.interval_days ?? '',
+    active_months: fields.active_months ?? existing?.active_months ?? '',
+  }
+  const empty = !next.interval_days && !next.active_months
+  if (existing) {
+    if (empty) return removeRow('Schedules', db.schedules, existing)
+    await updateRow('Schedules', existing._row, next)
+    Object.assign(existing, next)
+  } else if (!empty) {
+    const _row = await appendRow('Schedules', next)
+    db.schedules.push(asRow(next, _row))
+  }
 }

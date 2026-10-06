@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Workspace } from '../lib/drive'
   import Icon from '../lib/Icon.svelte'
+  import { go } from '../lib/router.svelte'
   let { workspace, onsignout }: { workspace: Workspace; onsignout: () => void } = $props()
 </script>
 
@@ -25,8 +26,15 @@
 </section>
 
 <section>
-  <h2 class="label">Collection</h2>
-  <p class="soon">Lists, care types and schedules arrive in a later build.</p>
+  <h2 class="label">Care</h2>
+  <button class="row" onclick={() => go('settings', 'schedules')}>
+    <span>Schedules</span>
+    <span class="chev"><Icon name="back" size={16} /></span>
+  </button>
+  <button class="row" onclick={() => go('settings', 'care-types')}>
+    <span>Care types</span>
+    <span class="chev"><Icon name="back" size={16} /></span>
+  </button>
 </section>
 
 <button class="btn ghost out" onclick={onsignout}>Sign out</button>
@@ -58,10 +66,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .soon {
-    margin: 8px 0 0;
+  button.row {
+    width: 100%;
+    text-align: left;
+  }
+  .chev {
     color: var(--muted);
-    font-size: 14px;
+    display: flex;
+    transform: rotate(180deg);
   }
   .out {
     margin-top: 48px;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { AuthRedirect, consumeRedirect, getToken, hasSignedInBefore, rememberEmail, signIn, signOut } from './lib/auth'
   import { ensureWorkspace, type Workspace } from './lib/drive'
   import { go, router } from './lib/router.svelte'
@@ -13,11 +13,24 @@
   import PotDetail from './views/PotDetail.svelte'
   import PotForm from './views/PotForm.svelte'
   import MakerDetail from './views/MakerDetail.svelte'
+  import LogCareForm from './views/LogCareForm.svelte'
+  import SettingsSchedules from './views/SettingsSchedules.svelte'
+  import SettingsCareTypes from './views/SettingsCareTypes.svelte'
   import TabBar from './lib/TabBar.svelte'
   import Fab from './lib/Fab.svelte'
   import BottomSheet from './lib/BottomSheet.svelte'
 
   let addBusy = $state(false)
+
+  // App-wide sheets belong to the page they were opened on.
+  $effect(() => {
+    void router.route
+    void router.param
+    if (untrack(() => addBusy)) return
+    ui.addTree = false
+    ui.addPot = false
+    ui.logCare = false
+  })
 
   type Phase = 'booting' | 'signed_out' | 'connecting' | 'ready' | 'error'
   let phase = $state<Phase>('booting')
@@ -102,6 +115,10 @@
       <Collection kind="pot" />
     {:else if router.route === 'makers'}
       {#key router.param}<MakerDetail id={router.param} />{/key}
+    {:else if router.param === 'schedules'}
+      <SettingsSchedules />
+    {:else if router.param === 'care-types'}
+      <SettingsCareTypes />
     {:else}
       <Settings {workspace} onsignout={leave} />
     {/if}
@@ -125,6 +142,11 @@
         go('pots', p.id)
       }}
     />
+  </BottomSheet>
+  <BottomSheet bind:open={ui.logCare} title={ui.logCareTree ? 'Log care' : 'Log care round'} busy={addBusy}>
+    {#key ui.logCare}
+      <LogCareForm bind:busy={addBusy} ondone={() => (ui.logCare = false)} />
+    {/key}
   </BottomSheet>
 {/if}
 
