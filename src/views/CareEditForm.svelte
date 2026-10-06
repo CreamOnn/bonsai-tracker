@@ -2,7 +2,18 @@
   import { untrack } from 'svelte'
   import ListSelect from '../lib/ListSelect.svelte'
   import { todayISO } from '../lib/format'
-  import { deleteCare, getCareType, productList, updateCare, usesProduct, type Row } from '../lib/store.svelte'
+  import {
+    FERTILISE,
+    deleteCare,
+    fertDefaults,
+    getCareType,
+    getTree,
+    isPSensitive,
+    productList,
+    updateCare,
+    usesProduct,
+    type Row,
+  } from '../lib/store.svelte'
 
   let { entry, ondone, busy = $bindable(false) }: { entry: Row; ondone: () => void; busy?: boolean } = $props()
 
@@ -14,6 +25,10 @@
   let notes = $state(start.notes)
   let confirming = $state(false)
   let error = $state('')
+
+  const tree = getTree(start.tree_id)
+  const pSafe = fertDefaults('p').product
+  let pWarning = $derived(start.care_type === FERTILISE && !!tree && isPSensitive(tree) && !!pSafe && !!product && product !== pSafe)
 
   async function run(fn: () => Promise<void>) {
     busy = true
@@ -43,6 +58,7 @@
     <span class="label">Amount · optional</span>
     <input bind:value={amount} placeholder="e.g. 5 ml/L" />
   </label>
+  {#if pWarning}<p class="warn">This tree is phosphorus-sensitive. Your phosphorus-safe fertiliser is {pSafe}.</p>{/if}
 {/if}
 
 <label class="field">
@@ -78,6 +94,11 @@
   }
   .type + label {
     margin-top: 18px;
+  }
+  .warn {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--danger);
   }
   .confirm {
     margin: 0 0 4px;

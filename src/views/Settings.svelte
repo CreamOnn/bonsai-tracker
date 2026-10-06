@@ -35,6 +35,14 @@
     <span>Care types</span>
     <span class="chev"><Icon name="back" size={16} /></span>
   </button>
+  <button class="row" onclick={() => go('settings', 'fertilisers')}>
+    <span>Fertilisers</span>
+    <span class="chev"><Icon name="back" size={16} /></span>
+  </button>
+  <button class="row" onclick={() => go('settings', 'species')}>
+    <span>Species <span class="sub">· phosphorus-sensitive</span></span>
+    <span class="chev"><Icon name="back" size={16} /></span>
+  </button>
 </section>
 
 <button class="btn ghost out" onclick={onsignout}>Sign out</button>
@@ -65,6 +73,10 @@
     font-size: 14px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 13px;
   }
   button.row {
     width: 100%;

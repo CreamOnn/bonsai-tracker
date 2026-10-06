@@ -25,6 +25,7 @@ export const db = $state({
   careLog: [] as Row[],
   careTypes: [] as Row[],
   schedules: [] as Row[],
+  meta: [] as Row[],
 })
 
 // logCareTree preselects one tree (single entry); empty means a round with all active trees ticked.
@@ -49,7 +50,28 @@ export async function loadDb(workspace: Workspace) {
   db.careLog = all.CareLog
   db.careTypes = all.CareTypes
   db.schedules = all.Schedules
+  db.meta = all.Meta
   await seedNewLists()
+}
+
+// Meta: key/value settings
+
+export function getMeta(key: string) {
+  return db.meta.find((m) => m.key === key)?.value ?? ''
+}
+
+export async function setMeta(values: Record<string, string>) {
+  const added: { key: string; value: string }[] = []
+  for (const [key, value] of Object.entries(values)) {
+    const row = db.meta.find((m) => m.key === key)
+    if (row) {
+      if (row.value === value) continue
+      await updateRow('Meta', row._row, { key, value })
+      row.value = value
+    } else added.push({ key, value })
+  }
+  const nums = await appendRows('Meta', added)
+  added.forEach((r, i) => db.meta.push(asRow(r, nums[i])))
 }
 
 /** Deletes a Sheet row and renumbers the in-memory rows below it. */
@@ -61,14 +83,30 @@ async function removeRow(tab: string, rows: Row[], row: Row) {
   for (const r of rows) if (r._row > removed) r._row -= 1
 }
 
-/** Seeds any list that has no values yet (lists introduced after the Sheet was created). */
+/**
+ * Seeds lists introduced after the Sheet was created, once each. Meta `seeded_lists`
+ * remembers what was seeded so a list the user empties on purpose stays empty.
+ */
 async function seedNewLists() {
-  const present = new Set(db.lists.map((r) => r.list))
-  const rows = Object.entries(LIST_SEEDS)
-    .filter(([list]) => !present.has(list))
-    .flatMap(([list, values]) => values.map((value) => ({ list, value })))
+  const seeded = new Set([...db.lists.map((r) => r.list), ...getMeta('seeded_lists').split(',').filter(Boolean)])
+  const toSeed = Object.keys(LIST_SEEDS).filter((list) => !seeded.has(list))
+
+  const rows: { list: string; value: string }[] = []
+  for (const list of toSeed) for (const value of LIST_SEEDS[list]) rows.push({ list, value })
+
+  // Every flagged species must also be a pickable species (also repairs half-finished seeding).
+  const species = new Set(db.lists.filter((r) => r.list === 'species').map((r) => r.value))
+  const flagged = [...db.lists.filter((r) => r.list === 'p_sensitive').map((r) => r.value), ...rows.filter((r) => r.list === 'p_sensitive').map((r) => r.value)]
+  for (const value of flagged) {
+    if (species.has(value) || rows.some((r) => r.list === 'species' && r.value === value)) continue
+    rows.push({ list: 'species', value })
+  }
+
   const nums = await appendRows('Lists', rows)
   rows.forEach((r, i) => db.lists.push(asRow(r, nums[i])))
+
+  const record = [...new Set([...seeded, ...toSeed])].sort().join(',')
+  if (record !== getMeta('seeded_lists')) await setMeta({ seeded_lists: record })
 }
 
 // Lists
@@ -86,6 +124,46 @@ export async function addListValue(list: string, value: string) {
   const row = { list, value: v }
   const _row = await appendRow('Lists', row)
   db.lists.push(asRow(row, _row))
+}
+
+export async function removeListValue(list: string, value: string) {
+  const row = db.lists.find((r) => r.list === list && r.value === value)
+  if (row) await removeRow('Lists', db.lists, row)
+}
+
+// Phosphorus sensitivity (SPEC §6a): species flag in Lists 'p_sensitive', tree override in Trees.p_sensitive.
+
+export const FERTILISE = 'Fertilise'
+
+export function speciesPSensitive(species: string) {
+  return !!species && db.lists.some((r) => r.list === 'p_sensitive' && r.value === species)
+}
+
+export async function setSpeciesPSensitive(species: string, on: boolean) {
+  if (on) await addListValue('p_sensitive', species)
+  else await removeListValue('p_sensitive', species)
+}
+
+export function isPSensitive(tree: Row) {
+  if (tree.p_sensitive === 'y') return true
+  if (tree.p_sensitive === 'n') return false
+  return speciesPSensitive(tree.species)
+}
+
+export type FertGroup = 'p' | 'std'
+
+/** Default product + amount for each group, set in Settings → Fertilisers. */
+export function fertDefaults(group: FertGroup) {
+  return { product: getMeta(`fert_${group}_product`), amount: getMeta(`fert_${group}_amount`) }
+}
+
+export function setFertDefaults(values: Record<FertGroup, { product: string; amount: string }>) {
+  return setMeta({
+    fert_p_product: values.p.product,
+    fert_p_amount: values.p.amount.trim(),
+    fert_std_product: values.std.product,
+    fert_std_amount: values.std.amount.trim(),
+  })
 }
 
 // Shared record helpers
@@ -309,20 +387,28 @@ export function lastAmount(careType: string, product: string) {
   return best?.amount ?? ''
 }
 
-/** One CareLog row per tree; rows logged together share a round_id. */
-export async function logCare(opts: { careType: string; date: string; treeIds: string[]; notes: string; product: string; amount: string }) {
-  const round = opts.treeIds.length > 1 ? newId('r') : ''
+/**
+ * One CareLog row per tree; rows logged together share a round_id. Each tree can carry
+ * its own product/amount (e.g. P-sensitive trees get a different fertiliser).
+ */
+export async function logCare(opts: {
+  careType: string
+  date: string
+  notes: string
+  items: { treeId: string; product: string; amount: string }[]
+}) {
+  const round = opts.items.length > 1 ? newId('r') : ''
   const now = new Date().toISOString()
-  const rows = opts.treeIds.map((tree_id) => ({
+  const rows = opts.items.map((item) => ({
     id: newId('c'),
     date: opts.date,
     care_type: opts.careType,
-    tree_id,
+    tree_id: item.treeId,
     notes: opts.notes.trim(),
     round_id: round,
     created_at: now,
-    product: opts.product,
-    amount: opts.amount.trim(),
+    product: item.product,
+    amount: item.amount.trim(),
   }))
   const nums = await appendRows('CareLog', rows)
   rows.forEach((r, i) => db.careLog.push(asRow(r, nums[i])))

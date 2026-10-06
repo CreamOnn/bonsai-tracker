@@ -66,6 +66,18 @@ Bonsai Tracker/
 3. A tree is due when *today − last logged date for that care type ≥ interval*. A tree that has never had that care logged counts as due immediately.
 4. Species intervals start blank, and you set them yourself.
 
+## 6a. Phosphorus-sensitive trees (added 06/10/2026)
+
+Some Australian natives need a low-phosphorus fertiliser.
+
+- **Flag:** set per species (Lists tab, list `p_sensitive`), with a per-tree override (`Trees.p_sensitive`: `y` / `n` / blank = follow species).
+- **Pre-flagged:** Banksia, Grevillea, Hakea, Leucadendron and Macadamia are added to the species list and flagged. All are editable.
+- **Where to set it:** the tree form has a "Phosphorus sensitive" tick. Changing it asks whether it applies to *just this tree* or *all trees of that species*. **Settings → Species** lists every species with its flag.
+- **Fertilisers:** **Settings → Fertilisers** sets one default product and amount for **P-sensitive** trees (X) and one for **standard** trees (Y). Values are stored in the Meta tab.
+- **Logging Fertilise:** the selected trees are split into a P-sensitive group and a standard group. Each group is pre-filled with its default product and amount (falling back to the last amount used) and can be edited. Saving writes one CareLog row per tree with that tree's product, all sharing one round id. This applies to single entries too.
+- **Warning:** shown, but not blocking, when a P-sensitive group's product isn't the P-sensitive default.
+- **Marker:** a small dot on P-sensitive trees' tiles in the Trees grid.
+
 ## 7. Screens
 
 ### Home

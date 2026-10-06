@@ -2,7 +2,7 @@
 // See docs/SPEC.md section 3.
 
 export const TABS: Record<string, string[]> = {
-  Trees: ['id', 'species', 'style', 'origin_year', 'price_paid', 'source', 'notes', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at'],
+  Trees: ['id', 'species', 'style', 'origin_year', 'price_paid', 'source', 'notes', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at', 'p_sensitive'],
   // New columns go at the end so existing Sheets line up (missing headers are appended on load).
   Pots: ['id', 'maker_id', 'style', 'length_cm', 'width_cm', 'height_cm', 'origin_year', 'price', 'cover_photo_id', 'status', 'status_date', 'sale_price', 'created_at', 'glaze', 'glaze_colour', 'source', 'notes'],
   Makers: ['id', 'name', 'country'],
@@ -112,13 +112,20 @@ const GLAZE_COLOURS = [
 
 const COUNTRIES = ['Japan', 'China', 'Australia', 'United Kingdom', 'United States', 'Korea', 'Germany', 'Czech Republic', 'Taiwan']
 
-/** Starter values per list. Lists added in later versions are seeded into existing Sheets on load. */
+// Proteaceae: Australian/South African natives that need low-phosphorus fertiliser (SPEC §6a).
+export const P_SENSITIVE_SEED = ['Banksia', 'Grevillea', 'Hakea', 'Leucadendron', 'Macadamia']
+
+/**
+ * Starter values per list. A list missing from an existing Sheet is seeded on load.
+ * `p_sensitive` holds species names flagged as phosphorus-sensitive.
+ */
 export const LIST_SEEDS: Record<string, string[]> = {
-  species: SPECIES,
+  species: [...SPECIES, ...P_SENSITIVE_SEED].sort((a, b) => a.localeCompare(b)),
   tree_style: TREE_STYLES,
   pot_style: POT_STYLES,
   glaze_colour: GLAZE_COLOURS,
   country: COUNTRIES,
+  p_sensitive: P_SENSITIVE_SEED,
 }
 
 export function seedRows(schemaVersion: number): Record<string, string[][]> {

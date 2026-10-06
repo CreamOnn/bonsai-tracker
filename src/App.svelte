@@ -16,6 +16,8 @@
   import LogCareForm from './views/LogCareForm.svelte'
   import SettingsSchedules from './views/SettingsSchedules.svelte'
   import SettingsCareTypes from './views/SettingsCareTypes.svelte'
+  import SettingsFertilisers from './views/SettingsFertilisers.svelte'
+  import SettingsSpecies from './views/SettingsSpecies.svelte'
   import TabBar from './lib/TabBar.svelte'
   import Fab from './lib/Fab.svelte'
   import BottomSheet from './lib/BottomSheet.svelte'
@@ -119,6 +121,10 @@
       <SettingsSchedules />
     {:else if router.param === 'care-types'}
       <SettingsCareTypes />
+    {:else if router.param === 'fertilisers'}
+      <SettingsFertilisers />
+    {:else if router.param === 'species'}
+      <SettingsSpecies />
     {:else}
       <Settings {workspace} onsignout={leave} />
     {/if}

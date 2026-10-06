@@ -1,23 +1,32 @@
 <script lang="ts">
   // Logs one care type for one tree (opened from a tree) or many (a round, all active trees pre-ticked).
+  // Fertilise splits the chosen trees into P-sensitive and standard groups, each with its own product (SPEC §6a).
   import { untrack } from 'svelte'
   import DriveImage from '../lib/DriveImage.svelte'
   import ListSelect from '../lib/ListSelect.svelte'
+  import { go } from '../lib/router.svelte'
   import { commonName, fmtAge, todayISO } from '../lib/format'
   import {
+    FERTILISE,
     coverFor,
     db,
+    fertDefaults,
     getCareType,
     isActive,
+    isPSensitive,
     lastAmount,
     logCare,
     productList,
     saveCareType,
     ui,
     usesProduct,
+    type FertGroup,
   } from '../lib/store.svelte'
 
   let { ondone, busy = $bindable(false) }: { ondone: () => void; busy?: boolean } = $props()
+
+  type Group = FertGroup | 'all'
+  type ProductState = { product: string; amount: string; touched: boolean }
 
   const presetTree = untrack(() => ui.logCareTree)
   const activeTrees = untrack(() => db.trees.filter(isActive))
@@ -26,11 +35,9 @@
   let date = $state(todayISO())
   let selected = $state<Set<string>>(new Set(presetTree ? [presetTree] : activeTrees.map((t) => t.id)))
   let showTrees = $state(!presetTree)
-  let product = $state('')
-  let amount = $state('')
-  let amountTouched = $state(false)
   let notes = $state('')
   let error = $state('')
+  let prod = $state<Record<Group, ProductState>>(initialProducts(untrack(() => careType)))
 
   // Inline "new care type"
   let addingType = $state(false)
@@ -40,16 +47,43 @@
 
   let ct = $derived(getCareType(careType))
   let showProduct = $derived(usesProduct(ct))
+  let isFert = $derived(careType === FERTILISE)
   let presetName = $derived(presetTree ? commonName(db.trees.find((t) => t.id === presetTree)?.species ?? '') : '')
 
-  // Pre-fill the amount used last time for this type + product, unless the user typed one.
+  let chosen = $derived(activeTrees.filter((t) => selected.has(t.id)))
+  let pCount = $derived(chosen.filter(isPSensitive).length)
+  let stdCount = $derived(chosen.length - pCount)
+  let pDefault = $derived(fertDefaults('p'))
+  let pWarning = $derived(isFert && pCount > 0 && !!pDefault.product && !!prod.p.product && prod.p.product !== pDefault.product)
+
+  /** The group's default amount when its default product is chosen, otherwise the last amount used. */
+  function amountFor(type: string, group: Group, product: string) {
+    if (!product) return ''
+    if (type === FERTILISE && group !== 'all') {
+      const d = fertDefaults(group)
+      if (d.product === product && d.amount) return d.amount
+    }
+    return lastAmount(type, product)
+  }
+
+  function initialProducts(type: string): Record<Group, ProductState> {
+    const make = (group: Group): ProductState => {
+      const product = type === FERTILISE && group !== 'all' ? fertDefaults(group).product : ''
+      return { product, amount: amountFor(type, group, product), touched: false }
+    }
+    return { p: make('p'), std: make('std'), all: make('all') }
+  }
+
+  // Changing a product refreshes its amount, unless the user typed one.
   $effect(() => {
-    const p = product
-    const t = careType
-    if (!amountTouched) amount = p ? lastAmount(t, p) : ''
+    for (const g of ['p', 'std', 'all'] as Group[]) {
+      const s = prod[g]
+      const product = s.product
+      if (!untrack(() => s.touched)) s.amount = amountFor(untrack(() => careType), g, product)
+    }
   })
 
-  // Product lists are per care type, so switching type clears the product.
+  // Product lists are per care type, so switching type resets the products.
   function pickType(e: Event) {
     const v = (e.currentTarget as HTMLSelectElement).value
     if (v === '__new__') {
@@ -61,8 +95,7 @@
       return
     }
     careType = v
-    product = ''
-    amountTouched = false
+    prod = initialProducts(v)
   }
 
   async function createType() {
@@ -71,7 +104,7 @@
     try {
       const created = await saveCareType({ name: newName, schedulable: newSchedulable, usesProduct: newUsesProduct })
       careType = created.name
-      product = ''
+      prod = initialProducts(created.name)
       addingType = false
     } catch (e) {
       error = (e as Error).message
@@ -95,10 +128,11 @@
       await logCare({
         careType,
         date,
-        treeIds: activeTrees.filter((t) => selected.has(t.id)).map((t) => t.id),
         notes,
-        product: showProduct ? product : '',
-        amount: showProduct ? amount : '',
+        items: chosen.map((t) => {
+          const g: Group = isFert ? (isPSensitive(t) ? 'p' : 'std') : 'all'
+          return { treeId: t.id, product: showProduct ? prod[g].product : '', amount: showProduct ? prod[g].amount : '' }
+        }),
       })
       ondone()
     } catch (e) {
@@ -108,6 +142,22 @@
     }
   }
 </script>
+
+{#snippet productFields(group: Group, title: string)}
+  <div class:groupbox={group !== 'all'}>
+    {#if group !== 'all'}<p class="grouptitle">{title}</p>{/if}
+    <ListSelect label="Product" list={productList(careType)} bind:value={prod[group].product} />
+    <label class="field">
+      <span class="label">Amount · optional</span>
+      <input bind:value={prod[group].amount} oninput={() => (prod[group].touched = true)} placeholder="e.g. 5 ml/L" />
+    </label>
+    {#if group === 'p' && pWarning}
+      <p class="warn">This isn't your phosphorus-safe fertiliser ({pDefault.product}).</p>
+    {:else if group === 'p' && !pDefault.product}
+      <p class="hint small">Set your phosphorus-safe fertiliser in <button class="link" onclick={() => go('settings', 'fertilisers')}>Settings → Fertilisers</button>.</p>
+    {/if}
+  </div>
+{/snippet}
 
 {#if addingType}
   <div class="newtype">
@@ -140,11 +190,12 @@
 </label>
 
 {#if showProduct}
-  <ListSelect label="Product" list={productList(careType)} bind:value={product} />
-  <label class="field">
-    <span class="label">Amount · optional</span>
-    <input bind:value={amount} oninput={() => (amountTouched = true)} placeholder="e.g. 5 ml/L" />
-  </label>
+  {#if isFert}
+    {#if pCount > 0}{@render productFields('p', `Phosphorus-sensitive · ${pCount} tree${pCount === 1 ? '' : 's'}`)}{/if}
+    {#if stdCount > 0}{@render productFields('std', `Standard · ${stdCount} tree${stdCount === 1 ? '' : 's'}`)}{/if}
+  {:else}
+    {@render productFields('all', '')}
+  {/if}
 {/if}
 
 <div class="field">
@@ -175,7 +226,7 @@
             </span>
             <span class="name">
               <span>{commonName(t.species) || 'Unknown'}</span>
-              <span class="meta">{[fmtAge(t.origin_year), t.style.replace(/\s*\(.*\)$/, '')].filter(Boolean).join(' · ')}</span>
+              <span class="meta">{[isPSensitive(t) ? 'P-sensitive' : '', fmtAge(t.origin_year), t.style.replace(/\s*\(.*\)$/, '')].filter(Boolean).join(' · ')}</span>
             </span>
             <span class="check" aria-hidden="true"></span>
           </button>
@@ -200,6 +251,33 @@
 <style>
   .placeholder {
     color: var(--muted);
+  }
+  .groupbox {
+    margin-top: 20px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .groupbox + .groupbox {
+    margin-top: 12px;
+  }
+  .grouptitle {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .warn {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--danger);
+  }
+  .small {
+    margin: 10px 0 0;
+    font-size: 13px;
+  }
+  .link {
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
   .newtype {
     padding: 16px;

@@ -5,7 +5,7 @@
   import InkTree from '../lib/InkTree.svelte'
   import { commonName, statusLabel } from '../lib/format'
   import { go } from '../lib/router.svelte'
-  import { coverFor, db, getMaker, isActive, ui, type Kind, type Row } from '../lib/store.svelte'
+  import { coverFor, db, getMaker, isActive, isPSensitive, ui, type Kind, type Row } from '../lib/store.svelte'
 
   let { kind }: { kind: Kind } = $props()
 
@@ -143,6 +143,7 @@
             </div>
           {/if}
           {#if !isActive(item)}<span class="badge">{statusLabel(item.status, kind)}</span>{/if}
+          {#if kind === 'tree' && isPSensitive(item)}<span class="pdot" title="Phosphorus sensitive"></span>{/if}
         </button>
       {/each}
     </div>
@@ -252,6 +253,17 @@
     font-size: 13px;
     padding: 12px;
     text-align: center;
+  }
+  /* Phosphorus-sensitive marker: a small ink dot ringed in paper so it reads on any photo. */
+  .pdot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 0 0 2px var(--bg);
   }
   .badge {
     position: absolute;
