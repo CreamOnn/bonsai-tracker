@@ -12,26 +12,40 @@
   const NEW = '__new__'
   let adding = $state(false)
   let draft = $state('')
+  let previous = ''
   let saving = $state(false)
   let error = $state('')
   let options = $derived(listValues(list))
 
+  // While typing a new value it is already the field's value, so a form saved without
+  // tapping "Add" keeps it. It joins the list on Add, Enter, or leaving the box.
+  function startAdding() {
+    previous = value
+    draft = ''
+    adding = true
+  }
+
   function onchange(e: Event) {
     const v = (e.currentTarget as HTMLSelectElement).value
     if (v === NEW) {
-      adding = true
-      draft = ''
       ;(e.currentTarget as HTMLSelectElement).value = value
+      startAdding()
     } else value = v
   }
 
+  function oninput() {
+    value = draft.trim()
+  }
+
   async function saveNew() {
-    if (!draft.trim()) return
+    if (saving || !adding) return
+    const v = draft.trim()
+    if (!v) return cancel()
     saving = true
     error = ''
     try {
-      await addListValue(list, draft)
-      value = options.find((o) => o.toLowerCase() === draft.trim().toLowerCase()) ?? draft.trim()
+      await addListValue(list, v)
+      value = options.find((o) => o.toLowerCase() === v.toLowerCase()) ?? v
       adding = false
     } catch (e) {
       error = (e as Error).message
@@ -39,21 +53,35 @@
       saving = false
     }
   }
+
+  function cancel() {
+    value = previous
+    adding = false
+    error = ''
+  }
 </script>
 
 <div class="field">
   <div class="head">
     <span class="label">{label}{required ? '' : ' · optional'}</span>
     {#if !adding}
-      <button class="addnew" onclick={() => ((adding = true), (draft = ''))} aria-label={`Add a new ${label.toLowerCase()}`}>＋ New</button>
+      <button class="addnew" onclick={startAdding} aria-label={`Add a new ${label.toLowerCase()}`}>＋ New</button>
     {/if}
   </div>
   {#if adding}
     <div class="new">
       <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value={draft} placeholder={`New ${label.toLowerCase()}`} autofocus onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), saveNew())} />
+      <input
+        bind:value={draft}
+        {oninput}
+        onblur={saveNew}
+        placeholder={`New ${label.toLowerCase()}`}
+        autofocus
+        onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), saveNew())}
+      />
       <button class="mini" onclick={saveNew} disabled={saving || !draft.trim()}>{saving ? 'Adding…' : 'Add'}</button>
-      <button class="mini ghost" onclick={() => (adding = false)} disabled={saving}>Cancel</button>
+      <!-- pointerdown keeps focus in the box, so Cancel doesn't first save via blur -->
+      <button class="mini ghost" onpointerdown={(e) => e.preventDefault()} onclick={cancel} disabled={saving}>Cancel</button>
     </div>
     {#if error}<p class="err">{error}</p>{/if}
   {:else}

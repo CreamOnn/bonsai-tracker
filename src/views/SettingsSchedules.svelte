@@ -9,6 +9,7 @@
   import { commonName } from '../lib/format'
   import { go } from '../lib/router.svelte'
   import {
+    FERTILISE,
     db,
     getCareType,
     getSchedule,
@@ -23,7 +24,8 @@
   import { fmtWindows, type Window } from '../lib/windows'
 
   let types = $derived(schedulableTypes())
-  let careType = $state(schedulableTypes()[0] ?? '')
+  // Fertilise is what most schedules are about, so start there.
+  let careType = $state(schedulableTypes().includes(FERTILISE) ? FERTILISE : (schedulableTypes()[0] ?? ''))
   let defaults = $derived(toWindows(windowRows(careType, '')))
   let products = $derived(usesProduct(getCareType(careType)) ? productList(careType) : '')
 
@@ -116,6 +118,7 @@
 {#if types.length === 0}
   <p class="intro">No care types are schedulable. Turn scheduling on in <button class="link" onclick={() => go('settings', 'care-types')}>Care types</button>.</p>
 {:else}
+  <h2 class="label first">Care type</h2>
   <div class="chips">
     {#each types as t (t)}
       <button class:on={careType === t} onclick={() => (careType = t)}>{t}</button>
@@ -204,7 +207,10 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    margin: 24px 0 8px;
+    margin: 10px 0 8px;
+  }
+  h2.first {
+    margin-top: 26px;
   }
   .chips button {
     height: 34px;
