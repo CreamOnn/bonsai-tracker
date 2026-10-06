@@ -12,6 +12,8 @@
   import TreeSchedule from './TreeSchedule.svelte'
   import PhotoForm from './PhotoForm.svelte'
   import PhotoEditForm from './PhotoEditForm.svelte'
+  import PhotoCompare from './PhotoCompare.svelte'
+  import LastYear from './LastYear.svelte'
   import type { Row } from '../lib/store.svelte'
   import TreeForm from './TreeForm.svelte'
 
@@ -29,10 +31,31 @@
   let photoEditOpen = $state(false)
 
   function openPhoto(p: Row) {
+    if (comparing) return pickForCompare(p)
     ensureFreshToken()
     editingPhoto = p
     photoEditOpen = true
   }
+
+  // Compare: tap "Compare", pick two photos, see them side by side.
+  let comparing = $state(false)
+  let picked = $state<Row[]>([])
+  let compareOpen = $state(false)
+
+  function pickForCompare(p: Row) {
+    picked = picked.some((x) => x.id === p.id) ? picked.filter((x) => x.id !== p.id) : [...picked, p].slice(-2)
+    if (picked.length === 2) compareOpen = true
+  }
+
+  function stopComparing() {
+    comparing = false
+    picked = []
+  }
+
+  $effect(() => {
+    // Closing the compare sheet ends compare mode.
+    if (!compareOpen && picked.length === 2) stopComparing()
+  })
   let busy = $state(false)
   let restoring = $state(false)
   let actionError = $state('')
@@ -129,11 +152,22 @@
     {#if tree.notes}<div class="notes"><dt class="label">Notes</dt><dd>{tree.notes}</dd></div>{/if}
   </dl>
 
+  <LastYear treeId={tree.id} />
   <TreeSchedule {tree} />
   <CareHistory treeId={tree.id} />
 
   <section>
-    <h2 class="label">Photos · {photos.length}</h2>
+    <div class="photohead">
+      <h2 class="label">Photos · {photos.length}</h2>
+      {#if photos.length >= 2}
+        {#if comparing}
+          <button class="cmp" onclick={stopComparing}>Cancel</button>
+        {:else}
+          <button class="cmp" onclick={() => (comparing = true)}>Compare</button>
+        {/if}
+      {/if}
+    </div>
+    {#if comparing}<p class="hint">Tap two photos to compare · {picked.length} of 2</p>{/if}
     {#if photos.length === 0}
       <p class="sub">No photos yet.</p>
     {:else}
@@ -149,7 +183,13 @@
                 <button class="setcover" onclick={() => makeCover(p.id)}>Set as cover</button>
               {/if}
             </div>
-            <button class="shot" onclick={() => openPhoto(p)} aria-label="Edit or delete photo">
+            <button
+              class="shot"
+              class:picked={picked.some((x) => x.id === p.id)}
+              onclick={() => openPhoto(p)}
+              aria-label={comparing ? 'Select photo to compare' : 'Edit or delete photo'}
+              aria-pressed={comparing ? picked.some((x) => x.id === p.id) : undefined}
+            >
               <DriveImage fileId={p.thumb_file_id || p.drive_file_id} alt={p.caption} />
             </button>
             {#if p.caption}<p class="caption">{p.caption}</p>{/if}
@@ -165,6 +205,10 @@
 
   <BottomSheet bind:open={archiving} title="Archive tree" {busy}>
     <ArchiveForm kind="tree" id={tree.id} bind:busy ondone={() => (archiving = false)} />
+  </BottomSheet>
+
+  <BottomSheet bind:open={compareOpen} title="Compare">
+    {#if picked.length === 2}<PhotoCompare photos={[picked[0], picked[1]]} />{/if}
   </BottomSheet>
 
   <BottomSheet bind:open={photoEditOpen} title="Photo" {busy}>
@@ -348,6 +392,25 @@
   }
   .shot:active {
     transform: scale(0.99);
+  }
+  .shot.picked {
+    outline: 3px solid var(--ink);
+    outline-offset: 3px;
+  }
+  .photohead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .cmp {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-soft);
+  }
+  .hint {
+    margin: -8px 0 16px;
+    font-size: 13px;
+    color: var(--muted);
   }
   .caption {
     margin: 10px 0 0;

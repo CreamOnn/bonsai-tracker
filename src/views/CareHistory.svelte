@@ -5,8 +5,12 @@
   import { fmtDate } from '../lib/format'
   import { careFor, type Row } from '../lib/store.svelte'
   import CareEditForm from './CareEditForm.svelte'
+  import CareCalendar from '../lib/CareCalendar.svelte'
 
   let { treeId }: { treeId: string } = $props()
+
+  // Always opens on the list; the calendar is one tap away.
+  let view = $state<'list' | 'calendar'>('list')
 
   const LIMIT = 10
   let all = $derived(careFor(treeId))
@@ -25,8 +29,16 @@
 </script>
 
 <section>
-  <h2 class="label">Care · {all.length}</h2>
-  {#if all.length === 0}
+  <div class="top">
+    <h2 class="label">Care · {all.length}</h2>
+    <div class="seg" role="tablist" aria-label="Care view">
+      <button role="tab" aria-selected={view === 'list'} class:on={view === 'list'} onclick={() => (view = 'list')}>List</button>
+      <button role="tab" aria-selected={view === 'calendar'} class:on={view === 'calendar'} onclick={() => (view = 'calendar')}>Calendar</button>
+    </div>
+  </div>
+  {#if view === 'calendar'}
+    <CareCalendar entries={all} onentry={edit} />
+  {:else if all.length === 0}
     <p class="empty">No care logged yet.</p>
   {:else}
     <ul>
@@ -61,8 +73,31 @@
   section {
     margin-top: 40px;
   }
-  h2 {
+  .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 6px;
+  }
+  .seg {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--line);
+  }
+  .seg button {
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .seg button.on {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(28, 27, 25, 0.08);
   }
   .empty {
     margin: 8px 0 0;

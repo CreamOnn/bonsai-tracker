@@ -5,6 +5,7 @@ import { resizeImage, trashFile, uploadJpeg } from './photos'
 import { LIST_SEEDS } from './schema'
 import { appendRow, appendRows, asRow, deleteRow, deleteRows, loadAll, updateRow, type Row } from './sheets'
 import { halfCode, parseHalf, windowsFromMonths, type Window } from './windows'
+import { assignCodes } from './codes'
 
 export type { Row }
 export type ArchiveStatus = 'sold' | 'died' | 'gifted'
@@ -399,13 +400,22 @@ export function getCareType(name: string) {
 export const isSchedulable = (ct: Row) => ct.schedulable === 'y'
 export const usesProduct = (ct: Row | undefined) => (!ct ? false : ct.uses_product ? ct.uses_product === 'y' : PRODUCT_DEFAULT.has(ct.name))
 
+/** Calendar code per care type name (explicit CareTypes.code, else preset, else automatic). */
+export function careCodes() {
+  return assignCodes(db.careTypes.map((c) => ({ name: c.name, code: c.code })))
+}
+
 // CareTypes.active_months is legacy: seasons now live in the Windows tab (SPEC §6b).
-export async function saveCareType(fields: { name: string; schedulable: boolean; usesProduct: boolean }, existingName?: string) {
+export async function saveCareType(
+  fields: { name: string; schedulable: boolean; usesProduct: boolean; code?: string },
+  existingName?: string,
+) {
   const row: Record<string, string> = {
     name: fields.name.trim(),
     schedulable: fields.schedulable ? 'y' : 'n',
     uses_product: fields.usesProduct ? 'y' : 'n',
   }
+  if (fields.code !== undefined) row.code = fields.code.trim().slice(0, 3)
   const existing = existingName ? getCareType(existingName) : undefined
   if (existing) {
     await updateRow('CareTypes', existing._row, { ...existing, ...row })

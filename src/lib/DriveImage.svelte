@@ -1,7 +1,7 @@
 <script lang="ts">
   import { photoUrl } from './photos'
 
-  let { fileId, alt = '' }: { fileId: string; alt?: string } = $props()
+  let { fileId, alt = '', fit = 'cover' }: { fileId: string; alt?: string; fit?: 'cover' | 'contain' } = $props()
 
   let src = $state<string | null>(null)
   let failed = $state(false)
@@ -25,7 +25,7 @@
 </script>
 
 <div class="frame" class:failed>
-  {#if src}<img {src} {alt} class:loaded onload={() => (loaded = true)} />{/if}
+  {#if src}<img {src} {alt} class:loaded style:object-fit={fit} onload={() => (loaded = true)} />{/if}
 </div>
 
 <style>

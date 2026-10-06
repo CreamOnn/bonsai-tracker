@@ -4,7 +4,7 @@
   import BottomSheet from '../lib/BottomSheet.svelte'
   import Icon from '../lib/Icon.svelte'
   import { go } from '../lib/router.svelte'
-  import { db, isSchedulable, saveCareType, usesProduct, type Row } from '../lib/store.svelte'
+  import { careCodes, db, isSchedulable, saveCareType, usesProduct, type Row } from '../lib/store.svelte'
 
   let open = $state(false)
   let busy = $state(false)
@@ -13,21 +13,33 @@
   let name = $state('')
   let schedulable = $state(false)
   let product = $state(false)
+  let code = $state('')
+
+  let codes = $derived(careCodes())
+  // A code another type already uses (case-insensitive).
+  let clash = $derived.by(() => {
+    const c = code.trim().toLowerCase()
+    if (!c) return ''
+    for (const [n, v] of codes) if (n !== editing?.name && v.toLowerCase() === c) return n
+    return ''
+  })
 
   function edit(ct: Row | null) {
     editing = ct
     name = ct?.name ?? ''
     schedulable = ct ? isSchedulable(ct) : false
     product = ct ? usesProduct(ct) : false
+    code = ct ? (codes.get(ct.name) ?? '') : ''
     error = ''
     open = true
   }
 
   async function save() {
+    if (clash) return
     busy = true
     error = ''
     try {
-      await saveCareType({ name, schedulable, usesProduct: product }, editing?.name)
+      await saveCareType({ name, schedulable, usesProduct: product, code }, editing?.name)
       open = false
     } catch (e) {
       error = (e as Error).message
@@ -44,7 +56,7 @@
   {#each db.careTypes as ct (ct.name)}
     <li>
       <button class="row" onclick={() => edit(ct)}>
-        <span class="name">{ct.name}{#if ct.built_in !== 'y'}<span class="custom"> · custom</span>{/if}</span>
+        <span class="name"><span class="code">{codes.get(ct.name)}</span>{ct.name}{#if ct.built_in !== 'y'}<span class="custom"> · custom</span>{/if}</span>
         <span class="tags">
           {#if isSchedulable(ct)}<span>Scheduled</span>{/if}
           {#if usesProduct(ct)}<span>Product</span>{/if}
@@ -63,6 +75,11 @@
       <input bind:value={name} placeholder="e.g. Root prune" />
     </label>
   {/if}
+  <label class="field codefield">
+    <span class="label">Calendar code</span>
+    <input bind:value={code} maxlength="3" placeholder={editing ? '' : 'Automatic'} autocapitalize="characters" />
+    {#if clash}<span class="form-error">Already used by {clash}.</span>{/if}
+  </label>
   <label class="toggle">
     <input type="checkbox" bind:checked={schedulable} />
     <span>Can be scheduled <span class="muted">· shows in Schedules and "due"</span></span>
@@ -73,11 +90,24 @@
   </label>
   <div class="form-actions">
     {#if error}<p class="form-error">{error}</p>{/if}
-    <button class="btn" onclick={save} disabled={busy || !name.trim()}>{busy ? 'Saving…' : editing ? 'Save' : 'Add care type'}</button>
+    <button class="btn" onclick={save} disabled={busy || !name.trim() || !!clash}>{busy ? 'Saving…' : editing ? 'Save' : 'Add care type'}</button>
   </div>
 </BottomSheet>
 
 <style>
+  .code {
+    display: inline-block;
+    width: 34px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .codefield {
+    margin-bottom: 6px;
+  }
+  .codefield input {
+    width: 90px;
+  }
   h1 {
     font-size: 40px;
     margin-bottom: 18px;
