@@ -260,9 +260,9 @@
     padding: 15px 0;
     border-bottom: 1px solid var(--line);
   }
-  dl div.notes {
-    flex-direction: column;
-    gap: 8px;
+  /* Notes sit in the same label-left / value-right row as the other details. */
+  dl div.notes dt {
+    flex: none;
   }
   dd {
     margin: 0;
@@ -270,10 +270,9 @@
     font-size: 16px;
   }
   .notes dd {
-    text-align: left;
+    text-align: right;
     white-space: pre-wrap;
     line-height: 1.5;
-    color: var(--ink-soft);
   }
   .link {
     text-decoration: underline;
