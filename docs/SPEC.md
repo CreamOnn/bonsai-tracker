@@ -76,6 +76,13 @@ Bonsai Tracker/
 - **Window products** apply to standard trees only. P-sensitive trees always get the P-safe default (§6a).
 - **Storage:** a new `Windows` tab (care_type, species = blank for the care-type default, from, to as `MMa`/`MMb` half-month codes, interval_days, product). Existing month seasons are converted once on load.
 
+### 6c. Managing lists and care types (added 07/10/2026)
+
+- **Settings → Lists** has one screen per list: Species, Tree styles, Pot styles, Glaze colours, Countries, and Products (one list per care type that records products). Each value shows how many records use it, and can be added, renamed or removed.
+- **Rename** updates every record that uses the value (trees, pots, makers, care entries, schedules, windows, phosphorus flags, fertiliser defaults).
+- **Remove** takes the value off the pick-list only. Records keep it. The app warns first when the value is in use.
+- **Care types** (Settings → Care types) can be renamed, and the rename carries through to entries, schedules, windows and the product list. Fertilise can't be renamed because the phosphorus logic depends on it. Any type can be **hidden**: it leaves pickers, schedules and Home, but its history stays and it can be unhidden. A type that has never been used can be **deleted**.
+
 ## 6a. Phosphorus-sensitive trees (added 06/10/2026)
 
 Some Australian natives need a low-phosphorus fertiliser.

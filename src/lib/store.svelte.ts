@@ -3,7 +3,7 @@ import type { Workspace } from './drive'
 import { newId, todayISO } from './format'
 import { resizeImage, trashFile, uploadJpeg } from './photos'
 import { LIST_SEEDS } from './schema'
-import { appendRow, appendRows, asRow, deleteRow, deleteRows, loadAll, updateRow, type Row } from './sheets'
+import { appendRow, appendRows, asRow, deleteRow, deleteRows, loadAll, updateRow, updateRowsBatch, type Row } from './sheets'
 import { halfCode, parseHalf, windowsFromMonths, type Window } from './windows'
 import { assignCodes } from './codes'
 
@@ -399,6 +399,120 @@ export function getCareType(name: string) {
 
 export const isSchedulable = (ct: Row) => ct.schedulable === 'y'
 export const usesProduct = (ct: Row | undefined) => (!ct ? false : ct.uses_product ? ct.uses_product === 'y' : PRODUCT_DEFAULT.has(ct.name))
+
+/** Care types offered in pickers (hidden ones keep their history but aren't offered). */
+export function visibleCareTypes() {
+  return db.careTypes.filter((c) => c.hidden !== 'y')
+}
+
+export async function setCareTypeHidden(name: string, hidden: boolean) {
+  const ct = getCareType(name)
+  if (!ct) return
+  await updateRow('CareTypes', ct._row, { ...ct, hidden: hidden ? 'y' : '' })
+  ct.hidden = hidden ? 'y' : ''
+}
+
+export function careTypeUsage(name: string) {
+  return (
+    db.careLog.filter((c) => c.care_type === name).length +
+    db.schedules.filter((s) => s.care_type === name).length +
+    db.windows.filter((w) => w.care_type === name).length
+  )
+}
+
+/** Only for types nothing refers to; anything with history is hidden instead. */
+export async function deleteCareType(name: string) {
+  const ct = getCareType(name)
+  if (!ct) return
+  if (careTypeUsage(name) > 0) throw new Error(`${name} has history, so it can only be hidden.`)
+  await removeRow('CareTypes', db.careTypes, ct)
+}
+
+/** Renames a care type and everything that refers to it by name (SPEC §6c). */
+export async function renameCareType(oldName: string, newName: string) {
+  const name = newName.trim()
+  const ct = getCareType(oldName)
+  if (!ct || !name || name === oldName) return
+  if (oldName === FERTILISE) throw new Error('Fertilise can’t be renamed — the phosphorus logic depends on it.')
+  if (getCareType(name) && name.toLowerCase() !== oldName.toLowerCase()) throw new Error(`"${name}" already exists.`)
+
+  // Keep the code and product setting it had under the old name (presets are keyed by name).
+  const code = careCodes().get(oldName) ?? ''
+  const usesProd = usesProduct(ct) ? 'y' : 'n'
+  const items: { tab: string; row: Row; next: Record<string, string> }[] = [
+    { tab: 'CareTypes', row: ct, next: { name, code: ct.code || code, uses_product: usesProd } },
+    ...db.careLog.filter((c) => c.care_type === oldName).map((row) => ({ tab: 'CareLog', row, next: { care_type: name } })),
+    ...db.schedules.filter((s) => s.care_type === oldName).map((row) => ({ tab: 'Schedules', row, next: { care_type: name } })),
+    ...db.windows.filter((w) => w.care_type === oldName).map((row) => ({ tab: 'Windows', row, next: { care_type: name } })),
+    ...db.lists.filter((l) => l.list === productList(oldName)).map((row) => ({ tab: 'Lists', row, next: { list: productList(name) } })),
+  ]
+  await applyUpdates(items)
+}
+
+async function applyUpdates(items: { tab: string; row: Row; next: Record<string, string> }[]) {
+  await updateRowsBatch(items.map(({ tab, row, next }) => ({ tab, row: row._row, obj: { ...row, ...next } })))
+  for (const { row, next } of items) Object.assign(row, next)
+}
+
+/** Lists that can be managed in Settings → Lists. Products get one list per product-using care type. */
+export function managedLists() {
+  const fixed = [
+    { list: 'species', label: 'Species' },
+    { list: 'tree_style', label: 'Tree styles' },
+    { list: 'pot_style', label: 'Pot styles' },
+    { list: 'glaze_colour', label: 'Glaze colours' },
+    { list: 'country', label: 'Countries' },
+  ]
+  const products = visibleCareTypes()
+    .filter(usesProduct)
+    .map((c) => ({ list: productList(c.name), label: `Products · ${c.name}` }))
+  return [...fixed, ...products]
+}
+
+/** Every record field that holds a value from `list`, as [rows, field] pairs (filtered for products). */
+function usages(list: string, value: string): { tab: string; row: Row; field: string }[] {
+  const pick = (tab: string, rows: Row[], field: string, extra: (r: Row) => boolean = () => true) =>
+    rows.filter((r) => r[field] === value && extra(r)).map((row) => ({ tab, row, field }))
+  if (list === 'species')
+    return [
+      ...pick('Trees', db.trees, 'species'),
+      ...pick('Schedules', db.schedules, 'species'),
+      ...pick('Windows', db.windows, 'species'),
+      ...pick('Lists', db.lists, 'value', (r) => r.list === 'p_sensitive'),
+    ]
+  if (list === 'tree_style') return pick('Trees', db.trees, 'style')
+  if (list === 'pot_style') return pick('Pots', db.pots, 'style')
+  if (list === 'glaze_colour') return pick('Pots', db.pots, 'glaze_colour')
+  if (list === 'country') return pick('Makers', db.makers, 'country')
+  if (list.startsWith('product:')) {
+    const type = list.slice('product:'.length)
+    return [
+      ...pick('CareLog', db.careLog, 'product', (r) => r.care_type === type),
+      ...pick('Windows', db.windows, 'product', (r) => r.care_type === type),
+      ...(type === FERTILISE ? pick('Meta', db.meta, 'value', (r) => r.key === 'fert_p_product' || r.key === 'fert_std_product') : []),
+    ]
+  }
+  return []
+}
+
+export function listUsageCount(list: string, value: string) {
+  // The P-sensitive flag isn't a "use" the user would count.
+  return usages(list, value).filter((u) => !(u.tab === 'Lists')).length
+}
+
+/** Renames a list value and every record that uses it (SPEC §6c). */
+export async function renameListValue(list: string, oldValue: string, newValue: string) {
+  const v = newValue.trim()
+  if (!v || v === oldValue) return
+  const clash = db.lists.find((r) => r.list === list && r.value.toLowerCase() === v.toLowerCase() && r.value !== oldValue)
+  if (clash) throw new Error(`"${clash.value}" is already in the list.`)
+  const own = db.lists.find((r) => r.list === list && r.value === oldValue)
+  const items = [
+    ...(own ? [{ tab: 'Lists', row: own, next: { value: v } }] : []),
+    ...usages(list, oldValue).map(({ tab, row, field }) => ({ tab, row, next: { [field]: v } })),
+  ]
+  await applyUpdates(items)
+}
 
 /** Calendar code per care type name (explicit CareTypes.code, else preset, else automatic). */
 export function careCodes() {

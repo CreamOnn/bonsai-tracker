@@ -1,10 +1,22 @@
 <script lang="ts">
-  // Settings → Care types: toggle scheduling and product tracking; add custom types.
-  // Names can't be changed, because existing care entries refer to them by name.
+  // Settings → Care types (SPEC §6c): rename (carries through to history), calendar code,
+  // scheduling and product toggles, hide/unhide, and delete for types that were never used.
   import BottomSheet from '../lib/BottomSheet.svelte'
   import Icon from '../lib/Icon.svelte'
   import { go } from '../lib/router.svelte'
-  import { careCodes, db, isSchedulable, saveCareType, usesProduct, type Row } from '../lib/store.svelte'
+  import {
+    FERTILISE,
+    careCodes,
+    careTypeUsage,
+    db,
+    deleteCareType,
+    isSchedulable,
+    renameCareType,
+    saveCareType,
+    setCareTypeHidden,
+    usesProduct,
+    type Row,
+  } from '../lib/store.svelte'
 
   let open = $state(false)
   let busy = $state(false)
@@ -14,8 +26,14 @@
   let schedulable = $state(false)
   let product = $state(false)
   let code = $state('')
+  let confirmDelete = $state(false)
 
   let codes = $derived(careCodes())
+  let visible = $derived(db.careTypes.filter((c) => c.hidden !== 'y'))
+  let hidden = $derived(db.careTypes.filter((c) => c.hidden === 'y'))
+  let usage = $derived(editing ? careTypeUsage(editing.name) : 0)
+  let canRename = $derived(!editing || editing.name !== FERTILISE)
+
   // A code another type already uses (case-insensitive).
   let clash = $derived.by(() => {
     const c = code.trim().toLowerCase()
@@ -30,16 +48,16 @@
     schedulable = ct ? isSchedulable(ct) : false
     product = ct ? usesProduct(ct) : false
     code = ct ? (codes.get(ct.name) ?? '') : ''
+    confirmDelete = false
     error = ''
     open = true
   }
 
-  async function save() {
-    if (clash) return
+  async function run(fn: () => Promise<unknown>) {
     busy = true
     error = ''
     try {
-      await saveCareType({ name, schedulable, usesProduct: product, code }, editing?.name)
+      await fn()
       open = false
     } catch (e) {
       error = (e as Error).message
@@ -47,34 +65,61 @@
       busy = false
     }
   }
+
+  const save = () =>
+    run(async () => {
+      if (clash) return
+      let current = editing?.name
+      if (editing && name.trim() !== editing.name) {
+        await renameCareType(editing.name, name)
+        current = name.trim()
+      }
+      await saveCareType({ name, schedulable, usesProduct: product, code }, current)
+    })
+
+  const toggleHidden = () => run(() => setCareTypeHidden(editing!.name, editing!.hidden !== 'y'))
+  const remove = () => run(() => deleteCareType(editing!.name))
 </script>
+
+{#snippet row(ct: Row)}
+  <li>
+    <button class="row" class:off={ct.hidden === 'y'} onclick={() => edit(ct)}>
+      <span class="name"><span class="code">{codes.get(ct.name)}</span>{ct.name}{#if ct.built_in !== 'y'}<span class="custom"> · custom</span>{/if}</span>
+      <span class="tags">
+        {#if isSchedulable(ct)}<span>Scheduled</span>{/if}
+        {#if usesProduct(ct)}<span>Product</span>{/if}
+      </span>
+    </button>
+  </li>
+{/snippet}
 
 <button class="back" onclick={() => go('settings')}><Icon name="back" size={18} /> Settings</button>
 <h1>Care types</h1>
 
 <ul>
-  {#each db.careTypes as ct (ct.name)}
-    <li>
-      <button class="row" onclick={() => edit(ct)}>
-        <span class="name"><span class="code">{codes.get(ct.name)}</span>{ct.name}{#if ct.built_in !== 'y'}<span class="custom"> · custom</span>{/if}</span>
-        <span class="tags">
-          {#if isSchedulable(ct)}<span>Scheduled</span>{/if}
-          {#if usesProduct(ct)}<span>Product</span>{/if}
-        </span>
-      </button>
-    </li>
-  {/each}
+  {#each visible as ct (ct.name)}{@render row(ct)}{/each}
 </ul>
 
 <button class="btn ghost add" onclick={() => edit(null)}>＋ New care type</button>
 
+{#if hidden.length}
+  <h2 class="label hiddenhead">Hidden</h2>
+  <p class="hiddenhelp">Not offered when logging care or in schedules. Their history stays.</p>
+  <ul>
+    {#each hidden as ct (ct.name)}{@render row(ct)}{/each}
+  </ul>
+{/if}
+
 <BottomSheet bind:open title={editing ? editing.name : 'New care type'} {busy}>
-  {#if !editing}
-    <label class="field">
-      <span class="label">Name</span>
-      <input bind:value={name} placeholder="e.g. Root prune" />
-    </label>
-  {/if}
+  <label class="field">
+    <span class="label">Name</span>
+    <input bind:value={name} placeholder="e.g. Root prune" disabled={!canRename} />
+    {#if !canRename}
+      <span class="muted">Fertilise can't be renamed, because phosphorus-sensitive fertilising depends on it.</span>
+    {:else if editing && name.trim() !== editing.name && usage}
+      <span class="muted">Renaming also updates its {usage} past entr{usage === 1 ? 'y' : 'ies'} and schedules.</span>
+    {/if}
+  </label>
   <label class="field codefield">
     <span class="label">Calendar code</span>
     <input bind:value={code} maxlength="3" placeholder={editing ? '' : 'Automatic'} autocapitalize="characters" />
@@ -90,11 +135,46 @@
   </label>
   <div class="form-actions">
     {#if error}<p class="form-error">{error}</p>{/if}
-    <button class="btn" onclick={save} disabled={busy || !name.trim() || !!clash}>{busy ? 'Saving…' : editing ? 'Save' : 'Add care type'}</button>
+    {#if confirmDelete}
+      <p class="confirm">Delete {editing?.name}? It has never been used, so nothing else changes.</p>
+      <button class="btn danger" onclick={remove} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</button>
+      <button class="btn ghost" onclick={() => (confirmDelete = false)} disabled={busy}>Keep it</button>
+    {:else}
+      <button class="btn" onclick={save} disabled={busy || !name.trim() || !!clash}>{busy ? 'Saving…' : editing ? 'Save' : 'Add care type'}</button>
+      {#if editing}
+        <button class="btn ghost" onclick={toggleHidden} disabled={busy}>{editing.hidden === 'y' ? 'Unhide' : 'Hide'}</button>
+        {#if usage === 0}
+          <button class="btn ghost del" onclick={() => (confirmDelete = true)} disabled={busy}>Delete</button>
+        {/if}
+      {/if}
+    {/if}
   </div>
 </BottomSheet>
 
 <style>
+  .row.off {
+    opacity: 0.55;
+  }
+  .hiddenhead {
+    margin: 36px 0 4px;
+  }
+  .hiddenhelp {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .confirm {
+    margin: 0 0 4px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .danger {
+    background: var(--danger);
+  }
+  .del {
+    color: var(--danger);
+  }
   .code {
     display: inline-block;
     width: 34px;

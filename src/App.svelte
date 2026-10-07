@@ -18,6 +18,7 @@
   import SettingsCareTypes from './views/SettingsCareTypes.svelte'
   import SettingsFertilisers from './views/SettingsFertilisers.svelte'
   import SettingsSpecies from './views/SettingsSpecies.svelte'
+  import SettingsLists from './views/SettingsLists.svelte'
   import TabBar from './lib/TabBar.svelte'
   import Fab from './lib/Fab.svelte'
   import BottomSheet from './lib/BottomSheet.svelte'
@@ -125,6 +126,8 @@
       <SettingsFertilisers />
     {:else if router.param === 'species'}
       <SettingsSpecies />
+    {:else if router.param === 'lists' || router.param.startsWith('list:')}
+      {#key router.param}<SettingsLists list={router.param.startsWith('list:') ? router.param.slice(5) : ''} />{/key}
     {:else}
       <Settings {workspace} onsignout={leave} />
     {/if}

@@ -39,6 +39,10 @@
     <span>Fertilisers</span>
     <span class="chev"><Icon name="back" size={16} /></span>
   </button>
+  <button class="row" onclick={() => go('settings', 'lists')}>
+    <span>Lists <span class="sub">· species, styles, colours, products</span></span>
+    <span class="chev"><Icon name="back" size={16} /></span>
+  </button>
   <button class="row" onclick={() => go('settings', 'species')}>
     <span>Species <span class="sub">· phosphorus-sensitive</span></span>
     <span class="chev"><Icon name="back" size={16} /></span>

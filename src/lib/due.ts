@@ -98,7 +98,7 @@ export function hasSchedule(tree: Row, careType: string) {
 }
 
 export function schedulableTypes() {
-  return db.careTypes.filter(isSchedulable).map((c) => c.name)
+  return db.careTypes.filter((c) => isSchedulable(c) && c.hidden !== 'y').map((c) => c.name)
 }
 
 /** Everything due today, grouped by care type (for the Home screen). */

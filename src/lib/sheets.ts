@@ -109,6 +109,16 @@ export async function appendRows(tab: string, objs: Record<string, unknown>[]): 
   return objs.map((_, i) => first + i)
 }
 
+/** Rewrites several rows (possibly across tabs) in one request. */
+export async function updateRowsBatch(items: { tab: string; row: number; obj: Record<string, unknown> }[]) {
+  if (!items.length) return
+  const data = items.map(({ tab, row, obj }) => ({
+    range: `'${tab}'!A${row}:${colLetter(headers[tab].length - 1)}${row}`,
+    values: [toCells(tab, obj)],
+  }))
+  await gjson(`${API}/${sheetId}/values:batchUpdate`, jsonBody({ valueInputOption: 'RAW', data }))
+}
+
 /** Removes several rows in one request (bottom-up, so earlier deletions don't shift later ones). */
 export async function deleteRows(tab: string, rows: number[]) {
   if (!rows.length) return

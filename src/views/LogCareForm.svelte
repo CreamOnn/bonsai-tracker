@@ -23,6 +23,7 @@
     saveCareType,
     ui,
     usesProduct,
+    visibleCareTypes,
     type Row,
   } from '../lib/store.svelte'
 
@@ -215,7 +216,7 @@
     <span class="label">Care</span>
     <select value={careType} onchange={pickType} class:placeholder={!careType}>
       <option value="" disabled>Choose…</option>
-      {#each db.careTypes as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
+      {#each visibleCareTypes() as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
       <option value="__new__">＋ New care type…</option>
     </select>
   </div>

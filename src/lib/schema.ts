@@ -8,7 +8,7 @@ export const TABS: Record<string, string[]> = {
   Makers: ['id', 'name', 'country'],
   Photos: ['id', 'owner_type', 'owner_id', 'drive_file_id', 'date', 'caption', 'created_at', 'thumb_file_id', 'slot'],
   CareLog: ['id', 'date', 'care_type', 'tree_id', 'notes', 'round_id', 'created_at', 'product', 'amount'],
-  CareTypes: ['name', 'built_in', 'schedulable', 'active_months', 'uses_product', 'code'],
+  CareTypes: ['name', 'built_in', 'schedulable', 'active_months', 'uses_product', 'code', 'hidden'],
   Schedules: ['species', 'tree_id', 'care_type', 'interval_days', 'active_months'],
   Lists: ['list', 'value'],
   // Seasonal windows (SPEC §6b). species blank = care-type default. from/to are half-month codes, e.g. 09a.
