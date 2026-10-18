@@ -14,9 +14,12 @@ function versionFile(): Plugin {
   }
 }
 
-// Served from https://creamonn.github.io/bonsai-tracker/
+// Served from https://<github-user>.github.io/<repo-name>/. The deploy workflow sets BASE_PATH
+// from the repo name; locally it defaults to /bonsai-tracker/ (see docs/SETUP.md).
+const base = process.env.BASE_PATH || '/bonsai-tracker/'
+
 export default defineConfig({
-  base: '/bonsai-tracker/',
+  base,
   plugins: [svelte(), versionFile()],
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   server: { port: 5173, strictPort: true },
